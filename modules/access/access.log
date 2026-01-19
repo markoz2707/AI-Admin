@@ -1,0 +1,438 @@
+[2026-01-10T11:11:10.349Z] INFO: Utworzono serwer ID=1 (testowy@192.168.7.30)
+[2026-01-10T11:11:55.332Z] ERROR: Connection error for server 1 (ssh)
+  Error: this.logger.log is not a function
+  Stack: TypeError: this.logger.log is not a function
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:26:19)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:11:55.333Z] ERROR: Błąd łączenia z serwerem 1: this.logger.log is not a function
+[2026-01-10T11:11:55.333Z] ERROR: Connection error for server 1 (ssh)
+  Error: this.logger.log is not a function
+  Stack: TypeError: this.logger.log is not a function
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:26:19)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:12:55.418Z] ERROR: Connection error for server 1 (ssh)
+  Error: this.logger.log is not a function
+  Stack: TypeError: this.logger.log is not a function
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:26:19)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:12:55.419Z] ERROR: Błąd łączenia z serwerem 1: this.logger.log is not a function
+[2026-01-10T11:12:55.419Z] ERROR: Connection error for server 1 (ssh)
+  Error: this.logger.log is not a function
+  Stack: TypeError: this.logger.log is not a function
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:26:19)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:15:22.827Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:15:22.828Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:15:22.829Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:15:22.830Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:15:22.830Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:15:22.831Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:15:32.913Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:15:32.913Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:15:32.914Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:15:32.914Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:15:32.914Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:15:32.914Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:16:54.114Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:16:54.114Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:16:54.114Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:16:54.114Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:16:54.114Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:16:54.114Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:16:56.935Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:16:56.936Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:16:56.936Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:16:56.936Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:16:56.936Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:16:56.936Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:00.307Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:17:00.307Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:17:00.308Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:17:00.308Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:00.309Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:17:00.309Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:10.369Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-10T11:17:13.021Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:17:13.022Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:17:13.022Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:17:13.022Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:13.022Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:17:13.022Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:31.861Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:17:31.861Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:17:31.861Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:17:31.862Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:31.862Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:17:31.862Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:33.197Z] WARN: Próba rozłączenia nieistniejącego połączenia: 1
+[2026-01-10T11:17:33.197Z] INFO: Rozłączono z serwerem 1
+[2026-01-10T11:17:33.197Z] INFO: Disconnected from server 1 ()
+[2026-01-10T11:17:34.979Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:17:34.979Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:17:34.979Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:17:34.979Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:34.979Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:17:34.979Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:17:36.139Z] WARN: Próba rozłączenia nieistniejącego połączenia: 1
+[2026-01-10T11:17:36.139Z] INFO: Rozłączono z serwerem 1
+[2026-01-10T11:17:36.140Z] INFO: Disconnected from server 1 ()
+[2026-01-10T11:18:16.992Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:18:16.992Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:18:16.993Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:18:16.993Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:18:16.993Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:18:16.993Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:19:13.627Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-10T11:19:15.456Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:19:15.456Z] INFO: Próba połączenia SSH z undefined@192.168.7.30:22
+[2026-01-10T11:19:15.456Z] ERROR: Błąd połączenia SSH: config.username must be a valid string
+[2026-01-10T11:19:15.456Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:19:15.456Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+[2026-01-10T11:19:15.456Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+  Stack: Error: Nie udało się połączyć z serwerem SSH: config.username must be a valid string
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:379:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:22:01.670Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-10T11:22:03.130Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:22:03.130Z] INFO: Próba połączenia SSH z admin@192.168.7.30:22
+[2026-01-10T11:22:03.134Z] ERROR: Błąd połączenia SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+[2026-01-10T11:22:03.134Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+  Stack: Error: Nie udało się połączyć z serwerem SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:22:03.134Z] ERROR: Błąd łączenia z serwerem 1: Nie udało się połączyć z serwerem SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+[2026-01-10T11:22:03.134Z] ERROR: Connection error for server 1 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+  Stack: Error: Nie udało się połączyć z serwerem SSH: connect EHOSTUNREACH 192.168.7.30:22 - Local (192.168.7.59:57527)
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:22:09.312Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:22:09.312Z] INFO: Próba połączenia SSH z admin@192.168.7.30:22
+[2026-01-10T11:22:09.633Z] INFO: Połączono z 192.168.7.30
+[2026-01-10T11:22:09.634Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-10T11:22:09.634Z] INFO: Połączono z serwerem 1
+[2026-01-10T11:22:09.634Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-10T11:22:11.639Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:22:11.639Z] ERROR: Connection error for server 1 (ssh)
+  Error: Połączenie z serwerem 1 już istnieje
+  Stack: Error: Połączenie z serwerem 1 już istnieje
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:29:15)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:22:11.639Z] ERROR: Błąd łączenia z serwerem 1: Połączenie z serwerem 1 już istnieje
+[2026-01-10T11:22:11.639Z] ERROR: Connection error for server 1 (ssh)
+  Error: Połączenie z serwerem 1 już istnieje
+  Stack: Error: Połączenie z serwerem 1 już istnieje
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:29:15)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:291:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T11:22:16.283Z] INFO: Wykonywanie polecenia na serwerze 1: ls /
+[2026-01-10T11:22:16.283Z] INFO: Wykonywanie polecenia: ls /
+[2026-01-10T11:22:16.430Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-10T11:22:16.431Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-10T11:22:16.432Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls /"}}
+[2026-01-10T11:25:24.843Z] ERROR: Błąd pobierania credential dla serwera 1: Failed to decrypt data
+[2026-01-10T11:25:32.665Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-10T11:25:35.379Z] ERROR: Błąd pobierania credential dla serwera 1: Failed to decrypt data
+[2026-01-10T11:26:04.586Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-10T11:26:06.416Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-10T11:26:06.416Z] INFO: Próba połączenia SSH z admin@192.168.7.30:22
+[2026-01-10T11:26:06.751Z] INFO: Połączono z 192.168.7.30
+[2026-01-10T11:26:06.790Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-10T11:26:06.791Z] INFO: Połączono z serwerem 1
+[2026-01-10T11:26:06.791Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-10T11:26:21.449Z] INFO: Wykonywanie polecenia na serwerze 1: ls
+[2026-01-10T11:26:21.449Z] INFO: Wykonywanie polecenia: ls
+[2026-01-10T11:26:21.764Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-10T11:26:21.765Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-10T11:26:21.768Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls"}}
+[2026-01-10T11:26:27.192Z] INFO: Wykonywanie polecenia na serwerze 1: pwd
+[2026-01-10T11:26:27.192Z] INFO: Wykonywanie polecenia: pwd
+[2026-01-10T11:26:27.258Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-10T11:26:27.258Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-10T11:26:27.260Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"pwd"}}
+[2026-01-10T14:07:27.119Z] INFO: Utworzono serwer ID=2 (Test RDP@192.168.7.63)
+[2026-01-10T14:09:25.361Z] INFO: Łączenie z serwerem 2 typu ssh
+[2026-01-10T14:09:25.362Z] INFO: Próba połączenia SSH z administrator@192.168.7.63:22
+[2026-01-10T14:09:26.370Z] ERROR: Błąd połączenia SSH: connect ECONNREFUSED 192.168.7.63:22
+[2026-01-10T14:09:26.371Z] ERROR: Connection error for server 2 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: connect ECONNREFUSED 192.168.7.63:22
+  Stack: Error: Nie udało się połączyć z serwerem SSH: connect ECONNREFUSED 192.168.7.63:22
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:302:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-10T14:09:26.371Z] ERROR: Błąd łączenia z serwerem 2: Nie udało się połączyć z serwerem SSH: connect ECONNREFUSED 192.168.7.63:22
+[2026-01-10T14:09:26.371Z] ERROR: Connection error for server 2 (ssh)
+  Error: Nie udało się połączyć z serwerem SSH: connect ECONNREFUSED 192.168.7.63:22
+  Stack: Error: Nie udało się połączyć z serwerem SSH: connect ECONNREFUSED 192.168.7.63:22
+    at SSHClient.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/ssh-client.js:35:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:35:9)
+    at async ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:7)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:302:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-11T07:47:08.621Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-11T07:48:13.190Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-11T07:48:13.190Z] ERROR: Connection error for server 1 (ssh)
+  Error: Połączenie z serwerem 1 już istnieje
+  Stack: Error: Połączenie z serwerem 1 już istnieje
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:29:15)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:302:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-11T07:48:13.191Z] ERROR: Błąd łączenia z serwerem 1: Połączenie z serwerem 1 już istnieje
+[2026-01-11T07:48:13.191Z] ERROR: Connection error for server 1 (ssh)
+  Error: Połączenie z serwerem 1 już istnieje
+  Stack: Error: Połączenie z serwerem 1 już istnieje
+    at AccessManager.connect (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/access/access-manager.js:29:15)
+    at ServerManager.connectToServer (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/management/server-manager.js:394:32)
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:302:17
+    at async /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:22
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-11T07:48:22.922Z] INFO: Rozłączanie z serwerem 1
+[2026-01-11T07:48:22.923Z] INFO: Rozłączanie SSH
+[2026-01-11T07:48:22.923Z] INFO: Rozłączono
+[2026-01-11T07:48:22.924Z] INFO: Disconnected from server 1 (ssh)
+[2026-01-11T07:48:22.924Z] INFO: Rozłączono z serwerem 1
+[2026-01-11T07:48:22.924Z] INFO: Disconnected from server 1 ()
+[2026-01-11T07:48:25.892Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-11T07:48:25.892Z] INFO: Próba połączenia SSH z admin@192.168.7.186:22
+[2026-01-11T07:48:26.224Z] INFO: Połączono z 192.168.7.186
+[2026-01-11T07:48:26.225Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-11T07:48:26.225Z] INFO: Połączono z serwerem 1
+[2026-01-11T07:48:26.225Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-11T07:48:29.709Z] INFO: Wykonywanie polecenia na serwerze 1: ls
+[2026-01-11T07:48:29.710Z] INFO: Wykonywanie polecenia: ls
+[2026-01-11T07:48:29.832Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-11T07:48:29.833Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-11T07:48:29.834Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls"}}
+[2026-01-11T07:48:39.083Z] INFO: Wykonywanie polecenia na serwerze 1: ls /
+[2026-01-11T07:48:39.083Z] INFO: Wykonywanie polecenia: ls /
+[2026-01-11T07:48:39.164Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-11T07:48:39.164Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-11T07:48:39.165Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls /"}}
+[2026-01-11T07:48:58.976Z] INFO: Wykonywanie polecenia na serwerze 1: ls /home/mkozniewski
+[2026-01-11T07:48:58.977Z] INFO: Wykonywanie polecenia: ls /home/mkozniewski
+[2026-01-11T07:48:59.078Z] INFO: Polecenie wykonane, kod wyjścia: 2
+[2026-01-11T07:48:59.078Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-11T07:48:59.079Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls /home/mkozniewski"}}
+[2026-01-11T07:50:11.482Z] INFO: Wykonywanie polecenia na serwerze 1: ls /tmp
+[2026-01-11T07:50:11.483Z] INFO: Wykonywanie polecenia: ls /tmp
+[2026-01-11T07:50:11.564Z] INFO: Polecenie wykonane, kod wyjścia: 0
+[2026-01-11T07:50:11.565Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-11T07:50:11.566Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":1,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"ls /tmp"}}
+[2026-01-11T08:19:04.276Z] ERROR: Błąd pobierania credential dla serwera 1: Failed to decrypt data
+[2026-01-11T08:19:21.065Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-11T08:19:33.063Z] ERROR: Błąd pobierania credential dla serwera 1: Failed to decrypt data
+[2026-01-11T08:24:28.747Z] ERROR: Błąd pobierania credential dla serwera 1: Failed to decrypt data
+[2026-01-11T08:25:22.872Z] INFO: Zaktualizowano serwer ID=1
+[2026-01-11T08:25:26.287Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-11T08:25:26.287Z] INFO: Próba połączenia SSH z admin@192.168.7.186:22
+[2026-01-11T08:25:26.624Z] INFO: Połączono z 192.168.7.186
+[2026-01-11T08:25:26.624Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-11T08:25:26.625Z] INFO: Połączono z serwerem 1
+[2026-01-11T08:25:26.625Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-11T08:25:39.477Z] INFO: Wykonywanie polecenia na serwerze 1: Zainstaluj aplikację nginx na serwerze undefined z domyślnymi ustawieniami
+[2026-01-11T08:25:39.478Z] INFO: Wykonywanie polecenia: Zainstaluj aplikację nginx na serwerze undefined z domyślnymi ustawieniami
+[2026-01-11T08:25:39.601Z] INFO: Polecenie wykonane, kod wyjścia: 127
+[2026-01-11T08:25:39.602Z] INFO: Polecenie wykonane na serwerze 1
+[2026-01-11T08:25:39.605Z] INFO: Audit: COMMAND_EXECUTE on server#1 | ctx={"actorUserId":null,"sessionId":null,"targetType":"server","targetId":1,"source":"ui","success":true,"details":{"command":"Zainstaluj aplikację nginx na serwerze undefined z domyślnymi ustawieniami"}}
+[2026-01-11T10:16:30.319Z] ERROR: Błąd pobierania credential dla serwera 2: Failed to decrypt data
+[2026-01-11T10:16:39.520Z] INFO: Zaktualizowano serwer ID=2
+[2026-01-11T10:16:41.589Z] ERROR: Błąd pobierania credential dla serwera 2: Failed to decrypt data
+[2026-01-11T10:16:56.439Z] INFO: Łączenie z serwerem 1 typu ssh
+[2026-01-11T10:16:56.439Z] INFO: Próba połączenia SSH z admin@192.168.7.186:22
+[2026-01-11T10:16:56.680Z] INFO: Połączono z 192.168.7.186
+[2026-01-11T10:16:56.681Z] INFO: Successfully connected to server 1 (ssh)
+[2026-01-11T10:16:56.681Z] INFO: Połączono z serwerem 1
+[2026-01-11T10:16:56.681Z] INFO: Successfully connected to server 1 (ssh)

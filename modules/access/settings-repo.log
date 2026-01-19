@@ -1,0 +1,36 @@
+[2026-01-11T07:53:39.712Z] ERROR: SettingsRepository.set failed | ctx={"scope":"global","key":"llm.provider","appUserId":null,"serverId":null}
+  Error: SQLITE_ERROR: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+  Stack: Error: SQLITE_ERROR: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+--> in Database#run('\n' +
+  '        INSERT INTO settings (scope, key, value, app_user_id, server_id, created_at, updated_at)\n' +
+  '        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n' +
+  '        ON CONFLICT(scope, key, COALESCE(app_user_id, 0), COALESCE(server_id, 0))\n' +
+  '        DO UPDATE SET\n' +
+  '          value = excluded.value,\n' +
+  '          updated_at = CURRENT_TIMESTAMP\n' +
+  '      ', [ 'global', 'llm.provider', 'openai', null, null ], [Function: runCb])
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/modules/database/database-config.js:86:12
+    at new Promise (<anonymous>)
+    at Object.run (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/database/database-config.js:85:14)
+    at SettingsRepository.set (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/settings/settings-repo.js:72:23)
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:834:26
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:28
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
+[2026-01-11T07:53:45.426Z] ERROR: SettingsRepository.set failed | ctx={"scope":"global","key":"llm.provider","appUserId":null,"serverId":null}
+  Error: SQLITE_ERROR: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+  Stack: Error: SQLITE_ERROR: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+--> in Database#run('\n' +
+  '        INSERT INTO settings (scope, key, value, app_user_id, server_id, created_at, updated_at)\n' +
+  '        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n' +
+  '        ON CONFLICT(scope, key, COALESCE(app_user_id, 0), COALESCE(server_id, 0))\n' +
+  '        DO UPDATE SET\n' +
+  '          value = excluded.value,\n' +
+  '          updated_at = CURRENT_TIMESTAMP\n' +
+  '      ', [ 'global', 'llm.provider', 'openai', null, null ], [Function: runCb])
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/modules/database/database-config.js:86:12
+    at new Promise (<anonymous>)
+    at Object.run (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/database/database-config.js:85:14)
+    at SettingsRepository.set (/Users/marekkozniewski/Desktop/AI/AI-Admin/modules/settings/settings-repo.js:72:23)
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:834:26
+    at /Users/marekkozniewski/Desktop/AI/AI-Admin/ui/electron-main.js:211:28
+    at async WebContents.<anonymous> (node:electron/js2c/browser_init:2:89137)
