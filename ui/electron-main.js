@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -54,15 +54,45 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     show: false,
   });
 
+  // Content-Security-Policy. W produkcji restrykcyjna; w dev poluzowana,
+  // bo CRA hot-reload wymaga 'unsafe-eval' i połączeń websocket.
+  const csp = isDev
+    ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:3000 ws://localhost:3000; img-src 'self' data:;"
+    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self';";
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
+
   const startUrl = isDev
     ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../build/index.html')}`;
+
+  // Hardening: blokuj otwieranie nowych okien i nawigację poza aplikację.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Linki zewnętrzne otwieraj w domyślnej przeglądarce systemowej.
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
 
   mainWindow.loadURL(startUrl);
 

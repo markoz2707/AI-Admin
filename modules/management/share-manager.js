@@ -1,4 +1,9 @@
 const { AccessManager } = require('../access');
+const {
+  shQuote,
+  winCmdArg,
+  assertIdentifier,
+} = require('../access/shell-escape');
 
 /**
  * ShareManager
@@ -66,21 +71,29 @@ class ShareManager {
     try {
       this.logger.info(`Tworzenie udziału ${shareName} na serwerze ${serverId}`);
 
+      assertIdentifier(shareName, 'shareName');
+
       let command;
       if (os === 'windows') {
-        command = `net share "${shareName}"="${sharePath}"`;
+        command = `net share ${winCmdArg(`${shareName}=${sharePath}`)}`;
         if (options.permissions) {
-          command += ` /grant:everyone,${options.permissions}`;
+          command += ` /grant:everyone,${assertIdentifier(options.permissions, 'permissions')}`;
         }
       } else if (os === 'linux') {
         // Dla Samba na Linux
-        const permissions = options.permissions || '0777';
-        const users = options.users ? options.users.join(',') : 'everyone';
+        const permissions = assertIdentifier(
+          options.permissions || '0777',
+          'permissions'
+        );
 
         // Najpierw upewnij się, że katalog istnieje
-        await this.accessManager.executeCommand(serverId, `sudo mkdir -p "${sharePath}"`);
+        await this.accessManager.executeCommand(
+          serverId,
+          `sudo mkdir -p ${shQuote(sharePath)}`
+        );
 
-        // Dodaj wpis do smb.conf (zakładamy, że Samba jest skonfigurowane)
+        // Dodaj wpis do smb.conf (zakładamy, że Samba jest skonfigurowane).
+        // shareName jest zwalidowanym identyfikatorem, sharePath cytujemy.
         const smbConfEntry = `
 [${shareName}]
    path = ${sharePath}
@@ -93,7 +106,7 @@ class ShareManager {
 `;
 
         // Dodaj do konfiguracji Samba
-        command = `echo "${smbConfEntry}" | sudo tee -a /etc/samba/smb.conf > /dev/null && sudo systemctl reload smbd`;
+        command = `echo ${shQuote(smbConfEntry)} | sudo tee -a /etc/samba/smb.conf > /dev/null && sudo systemctl reload smbd`;
 
         // Alternatywnie użyj net usershare jeśli dostępne
         // command = `net usershare add "${shareName}" "${sharePath}" "${options.description || ''}" "${users}" -f`;
@@ -125,12 +138,14 @@ class ShareManager {
     try {
       this.logger.info(`Usuwanie udziału ${shareName} z serwera ${serverId}`);
 
+      assertIdentifier(shareName, 'shareName');
+
       let command;
       if (os === 'windows') {
-        command = `net share "${shareName}" /delete`;
+        command = `net share ${winCmdArg(shareName)} /delete`;
       } else if (os === 'linux') {
-        // Dla Samba
-        command = `sudo net usershare delete "${shareName}" || (sudo sed -i "/\[${shareName}\]/,/^$/d" /etc/samba/smb.conf && sudo systemctl reload smbd)`;
+        // Dla Samba (shareName zwalidowany jako identyfikator – bezpieczny w sed)
+        command = `sudo net usershare delete ${shQuote(shareName)} || (sudo sed -i "/\\[${shareName}\\]/,/^$/d" /etc/samba/smb.conf && sudo systemctl reload smbd)`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -160,11 +175,14 @@ class ShareManager {
     try {
       this.logger.info(`Modyfikacja uprawnień udziału ${shareName} na serwerze ${serverId}`);
 
+      assertIdentifier(shareName, 'shareName');
+
       let command;
       if (os === 'windows') {
         const perm = permissions.permission === 'read' ? 'R' :
                     permissions.permission === 'write' ? 'C' : 'F';
-        command = `net share "${shareName}" /grant:"${permissions.user}",${perm}`;
+        assertIdentifier(permissions.user, 'permissions.user');
+        command = `net share ${winCmdArg(shareName)} /grant:${winCmdArg(`${permissions.user},${perm}`)}`;
       } else if (os === 'linux') {
         // Dla Samba - modyfikacja w smb.conf
         const permMap = {

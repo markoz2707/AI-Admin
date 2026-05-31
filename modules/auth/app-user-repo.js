@@ -1,26 +1,9 @@
 const crypto = require('crypto');
 const { getConnection } = require('../database/database-config');
 const Logger = require('../access/logger');
+const { hashPassword, verifyPassword, needsRehash } = require('./password-hash');
 
 const logger = new Logger('auth-app-user-repo.log');
-
-/**
- * Prosty wrapper na hashowanie haseł.
- * Docelowo warto podmienić na scrypt/bcrypt/argon2.
- */
-function hashPassword(password) {
-  if (!password || typeof password !== 'string') {
-    throw new Error('Password is required for hashing');
-  }
-
-  try {
-    // TODO: Zastąpić mocniejszym KDF (scrypt/argon2/bcrypt) + salt w konfiguracji.
-    return crypto.createHash('sha256').update(password, 'utf8').digest('hex');
-  } catch (err) {
-    logger.error('Błąd podczas generowania hash hasła', err);
-    throw err;
-  }
-}
 
 class AppUserRepository {
   constructor() {
@@ -124,10 +107,29 @@ class AppUserRepository {
       if (!user || !user.password_hash) {
         return null;
       }
-      const candidate = hashPassword(password);
-      if (candidate !== user.password_hash) {
+      if (!verifyPassword(password, user.password_hash)) {
         return null;
       }
+
+      // Transparentny upgrade starych hashy (SHA-256) na scrypt po udanym
+      // logowaniu, bez wymagania od użytkownika zmiany hasła.
+      if (needsRehash(user.password_hash)) {
+        try {
+          const upgraded = hashPassword(password);
+          await this.conn.run(
+            'UPDATE app_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [upgraded, user.id]
+          );
+          user.password_hash = upgraded;
+          logger.info('Przehashowano hasło użytkownika nowym algorytmem', {
+            username,
+          });
+        } catch (rehashErr) {
+          // Nie blokujemy logowania, jeśli sam upgrade się nie powiódł.
+          logger.warn('Nie udało się przehashować hasła', { username });
+        }
+      }
+
       return user;
     } catch (error) {
       logger.error('AppUserRepository.verifyPassword failed', error, {

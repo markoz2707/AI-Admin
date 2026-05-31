@@ -1,4 +1,9 @@
 const { AccessManager } = require('../access');
+const {
+  shQuote,
+  winCmdArg,
+  assertIdentifier,
+} = require('../access/shell-escape');
 
 /**
  * ServiceManager
@@ -66,11 +71,13 @@ class ServiceManager {
     try {
       this.logger.info(`Uruchamianie usługi ${serviceName} na serwerze ${serverId}`);
 
+      assertIdentifier(serviceName, 'serviceName');
+
       let command;
       if (os === 'windows') {
-        command = `sc start "${serviceName}"`;
+        command = `sc start ${winCmdArg(serviceName)}`;
       } else if (os === 'linux') {
-        command = `sudo systemctl start ${serviceName}`;
+        command = `sudo systemctl start ${shQuote(serviceName)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -99,11 +106,13 @@ class ServiceManager {
     try {
       this.logger.info(`Zatrzymywanie usługi ${serviceName} na serwerze ${serverId}`);
 
+      assertIdentifier(serviceName, 'serviceName');
+
       let command;
       if (os === 'windows') {
-        command = `sc stop "${serviceName}"`;
+        command = `sc stop ${winCmdArg(serviceName)}`;
       } else if (os === 'linux') {
-        command = `sudo systemctl stop ${serviceName}`;
+        command = `sudo systemctl stop ${shQuote(serviceName)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -132,11 +141,13 @@ class ServiceManager {
     try {
       this.logger.info(`Restartowanie usługi ${serviceName} na serwerze ${serverId}`);
 
+      assertIdentifier(serviceName, 'serviceName');
+
       let command;
       if (os === 'windows') {
-        command = `sc stop "${serviceName}" && sc start "${serviceName}"`;
+        command = `sc stop ${winCmdArg(serviceName)} && sc start ${winCmdArg(serviceName)}`;
       } else if (os === 'linux') {
-        command = `sudo systemctl restart ${serviceName}`;
+        command = `sudo systemctl restart ${shQuote(serviceName)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -166,12 +177,15 @@ class ServiceManager {
     try {
       this.logger.info(`Instalowanie usługi ${serviceName} na serwerze ${serverId}`);
 
+      assertIdentifier(serviceName, 'serviceName');
+
       let command;
       if (os === 'windows') {
-        command = `sc create "${serviceName}" binPath= "${servicePath}" start= auto`;
+        command = `sc create ${winCmdArg(serviceName)} binPath= ${winCmdArg(servicePath)} start= auto`;
       } else if (os === 'linux') {
         // Dla Linux zakładamy systemd service file
-        command = `sudo cp ${servicePath} /etc/systemd/system/${serviceName}.service && sudo systemctl daemon-reload && sudo systemctl enable ${serviceName}`;
+        const dest = `/etc/systemd/system/${serviceName}.service`;
+        command = `sudo cp ${shQuote(servicePath)} ${shQuote(dest)} && sudo systemctl daemon-reload && sudo systemctl enable ${shQuote(serviceName)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -200,11 +214,14 @@ class ServiceManager {
     try {
       this.logger.info(`Odinstalowywanie usługi ${serviceName} na serwerze ${serverId}`);
 
+      assertIdentifier(serviceName, 'serviceName');
+
       let command;
       if (os === 'windows') {
-        command = `sc delete "${serviceName}"`;
+        command = `sc delete ${winCmdArg(serviceName)}`;
       } else if (os === 'linux') {
-        command = `sudo systemctl stop ${serviceName} && sudo systemctl disable ${serviceName} && sudo rm /etc/systemd/system/${serviceName}.service && sudo systemctl daemon-reload`;
+        const unit = `/etc/systemd/system/${serviceName}.service`;
+        command = `sudo systemctl stop ${shQuote(serviceName)} && sudo systemctl disable ${shQuote(serviceName)} && sudo rm ${shQuote(unit)} && sudo systemctl daemon-reload`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
