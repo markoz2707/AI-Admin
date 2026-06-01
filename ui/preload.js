@@ -187,6 +187,21 @@ const api = {
         options,
       }),
   },
+
+  // Środowisko: wykrywanie OS i inwentaryzacja
+  env: {
+    detectOS: (serverId) =>
+      ipcRenderer.invoke('env:detectOS', {
+        sessionToken: currentSessionToken,
+        serverId,
+      }),
+    collect: (serverId, anonymize = false) =>
+      ipcRenderer.invoke('env:collect', {
+        sessionToken: currentSessionToken,
+        serverId,
+        anonymize,
+      }),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

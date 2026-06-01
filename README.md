@@ -176,6 +176,29 @@ llmManager.processAndExecutePrompt(prompt, serverId, {
 })
 ```
 
+## Wykrywanie OS i inwentaryzacja środowiska
+
+Zamiast ufać polu `os` z rejestracji, aplikacja **sonduje hosta** i zbiera
+read-only migawkę stanu — fundament pod migrację i automatyczną dokumentację.
+
+- `modules/management/os-detector.js` — wykrywa system niezależnie od kanału
+  (SSH/WinRM): próbuje `uname`, a gdy zawiedzie — `ver` (Windows). Parsuje
+  `/etc/os-release` i wersję Windows. `detectAndVerify` flaguje **niezgodność**
+  z tym, co podano przy rejestracji (`mismatch`).
+- `modules/management/environment-collector.js` — składa znormalizowaną migawkę:
+  OS/kernel/hostname, interfejsy sieciowe (`ip`/`ipconfig`), porty nasłuchu
+  (`ss`/`netstat`), usługi, użytkownicy i pakiety (przez istniejące managery).
+  Wszystkie polecenia są **read-only**. `anonymizeSnapshot()` zwraca kopię
+  z zamaskowanymi hostami/IP/e-mailami/ścieżkami (na potrzeby wysyłki do
+  zewnętrznego LLM, np. przy generowaniu dokumentacji).
+
+IPC (RBAC: admin/operator/readonly — operacje odczytowe):
+
+```
+window.api.env.detectOS(serverId)            // wykryj i zweryfikuj OS
+window.api.env.collect(serverId, anonymize)  // migawka środowiska (opcjonalnie anonimizowana)
+```
+
 ## Licencja
 
 ISC

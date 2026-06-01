@@ -53,6 +53,10 @@ const PERMISSIONS = {
   'console:execute': [ROLES.ADMIN, ROLES.OPERATOR], // readonly nie może wykonywać
   'history:commands:list': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
 
+  // Środowisko: wykrywanie OS i inwentaryzacja (read-only)
+  'env:detectOS': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+  'env:collect': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+
   // Credentials
   'credentials:list': [ROLES.ADMIN, ROLES.OPERATOR],
   'credentials:get': [ROLES.ADMIN, ROLES.OPERATOR],

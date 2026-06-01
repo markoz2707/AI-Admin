@@ -15,6 +15,8 @@ const passwordManager = require('../modules/password-manager/password-manager');
 const LLMManager = require('../modules/llm/llm-manager');
 const migrationManager = require('../modules/database/migration-manager');
 const { encrypt, decrypt } = require('../modules/database/encryption-manager');
+const osDetector = require('../modules/management/os-detector');
+const environmentCollector = require('../modules/management/environment-collector');
 const Logger = require('../modules/access/logger');
 const { ROLES, checkPermission } = require('../modules/access/rbac');
 const AppUserRepository = require('../modules/auth/app-user-repo');
@@ -796,6 +798,72 @@ ipcMain.handle(
       new Error('LLM report not implemented'),
       'NOT_IMPLEMENTED'
     );
+  })
+);
+
+// Środowisko: wykrywanie OS i inwentaryzacja (read-only).
+// Buduje executor związany z serwerem (z gwarancją połączenia).
+const makeServerExecutor = (serverId, context) => async (command) => {
+  if (!serverManager.isServerConnected(serverId)) {
+    await serverManager.connectToServer(serverId);
+  }
+  return serverManager.executeCommand(serverId, command, {
+    actorUserId: context.user ? context.user.id : null,
+    source: 'system',
+  });
+};
+
+ipcMain.handle(
+  'env:detectOS',
+  wrapHandler('env:detectOS', async ({ serverId }, _event, context) => {
+    const server = await serverManager.getServer(serverId);
+    const execute = makeServerExecutor(serverId, context);
+    const result = await osDetector.detectAndVerify(execute, server ? server.os : null);
+    await logger.logAuditLike({
+      actionType: 'ENV_DETECT_OS',
+      targetType: 'server',
+      targetId: serverId,
+      actorUserId: context.user ? context.user.id : null,
+      source: 'ui',
+      success: result.verified,
+      details: { os: result.os, mismatch: result.mismatch },
+    });
+    return result;
+  })
+);
+
+ipcMain.handle(
+  'env:collect',
+  wrapHandler('env:collect', async ({ serverId, anonymize }, _event, context) => {
+    const server = await serverManager.getServer(serverId);
+    const execute = makeServerExecutor(serverId, context);
+    const snapshot = await environmentCollector.collect({
+      execute,
+      server: server || { id: serverId },
+      os: server ? server.os : undefined,
+      serverId,
+      serviceManager,
+      userManager,
+      packageManager,
+    });
+    await logger.logAuditLike({
+      actionType: 'ENV_COLLECT',
+      targetType: 'server',
+      targetId: serverId,
+      actorUserId: context.user ? context.user.id : null,
+      source: 'ui',
+      success: true,
+      details: {
+        os: snapshot.os,
+        ports: snapshot.listeningPorts.length,
+        services: snapshot.services.length,
+      },
+    });
+    // Opcjonalnie zwróć zanonimizowaną wersję (np. do wysyłki do zewnętrznego LLM).
+    if (anonymize) {
+      return environmentCollector.anonymizeSnapshot(snapshot).anonymized;
+    }
+    return snapshot;
   })
 );
 
