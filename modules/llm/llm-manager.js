@@ -15,7 +15,7 @@
 // - prywatna metoda _callProvider(modelPrompt) do integracji z realnym LLM
 // - możliwość zapisu historii do DB (LLMTask, LLMTaskResult, AuditLog) w przyszłości
 
-const LLMClient = require('./llm-client'); // istniejący klient (może być stub)
+const LLMRouter = require('./llm-router'); // router: wewnętrzny vs zewnętrzny LLM
 const TaskGenerator = require('./task-generator');
 const PromptProcessor = require('./prompt-processor');
 const ServerManager = require('../management/server-manager');
@@ -25,13 +25,28 @@ const commandHistoryRepo = require('../history/command-history-repo');
 
 class LLMManager {
  constructor(config = {}) {
-   const { apiKey = null, logger = null, serverManager = null } = config;
+   const {
+     apiKey = null,
+     logger = null,
+     serverManager = null,
+     externalModel = undefined,
+     policy = undefined,
+     local = undefined,
+     allowAnonymization = undefined,
+   } = config;
 
    this.logger = logger || new Logger('llm-manager.log');
-   this.apiKey = apiKey;
-   this.llmClient = new LLMClient(apiKey, this.logger);
-   this.taskGenerator = new TaskGenerator(this.llmClient, this.logger);
-   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+
+   // Konfiguracja routingu LLM (trzymana, by móc rebuildować pipeline).
+   this._llmConfig = {
+     apiKey,
+     externalModel,
+     policy,
+     local,
+     allowAnonymization,
+   };
+
+   this._buildPipeline();
    this.serverManager = serverManager || new ServerManager(null, this.logger);
 
    // Repozytoria persistencji (singletons)
@@ -43,15 +58,47 @@ class LLMManager {
    this.taskHistory = new Map();
  }
 
+ /** Buduje router LLM oraz zależne komponenty na podstawie this._llmConfig. */
+ _buildPipeline() {
+   const cfg = this._llmConfig;
+   this.apiKey = cfg.apiKey;
+   this.router = new LLMRouter({
+     logger: this.logger,
+     policy: cfg.policy,
+     allowAnonymization: cfg.allowAnonymization,
+     external: { apiKey: cfg.apiKey, model: cfg.externalModel },
+     local: cfg.local || {},
+   });
+   // Alias zachowany dla kompatybilności z istniejącym kodem.
+   this.llmClient = this.router;
+   this.taskGenerator = new TaskGenerator(this.router, this.logger);
+   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+ }
+
  /**
   * Aktualizuje klucz API dla LLM. Używane gdy użytkownik zmienia klucz w ustawieniach.
   */
  setApiKey(newApiKey) {
-   this.apiKey = newApiKey;
-   this.llmClient = new LLMClient(newApiKey, this.logger);
-   this.taskGenerator = new TaskGenerator(this.llmClient, this.logger);
-   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+   this._llmConfig.apiKey = newApiKey;
+   this._buildPipeline();
    this.logger.info('API key updated in LLMManager');
+ }
+
+ /**
+  * Aktualizuje konfigurację routingu LLM (polityka, lokalny provider, model itp.).
+  * @param {Object} partial – pola: policy, externalModel, local, allowAnonymization
+  */
+ setLLMConfig(partial = {}) {
+   this._llmConfig = { ...this._llmConfig, ...partial };
+   this._buildPipeline();
+   this.logger.info('LLM config updated in LLMManager', {
+     policy: this._llmConfig.policy,
+   });
+ }
+
+ /** Zwraca status routingu/providerów (do UI/diagnostyki). */
+ getLLMStatus() {
+   return this.router.getStatus();
  }
 
   // --- Public API ---

@@ -109,6 +109,46 @@ function createWindow() {
   });
 }
 
+/**
+ * Czyta z ustawień konfigurację routingu LLM (wewnętrzny vs zewnętrzny).
+ * Klucze (scope 'global'):
+ *  - llm.provider           : 'auto' | 'openai' | 'local' | 'anonymize'  (polityka)
+ *  - llm.model              : model zewnętrzny (np. 'gpt-4o-mini')
+ *  - llm.allowAnonymization : bool (czy wolno anonimizować i wysyłać na zewnątrz)
+ *  - llm.local.enabled      : bool
+ *  - llm.local.baseUrl      : np. 'http://localhost:11434'
+ *  - llm.local.model        : np. 'llama3.1'
+ * @returns {Promise<Object>} fragment configu dla LLMManager
+ */
+async function loadLLMRoutingConfig() {
+  const get = async (key, dflt) => {
+    try {
+      const v = await settingsRepo.get('global', key);
+      return v === null || v === undefined ? dflt : v;
+    } catch {
+      return dflt;
+    }
+  };
+
+  const provider = await get('llm.provider', 'auto');
+  // Zmapuj wartości UI na polityki routera (puste/openai -> auto, by nie blokować).
+  const policy =
+    provider === 'local' || provider === 'anonymize' || provider === 'openai'
+      ? provider
+      : 'auto';
+
+  return {
+    policy,
+    externalModel: (await get('llm.model', '')) || undefined,
+    allowAnonymization: (await get('llm.allowAnonymization', true)) !== false,
+    local: {
+      enabled: (await get('llm.local.enabled', false)) === true,
+      baseUrl: (await get('llm.local.baseUrl', '')) || undefined,
+      model: (await get('llm.local.model', '')) || undefined,
+    },
+  };
+}
+
 // Start: okno + migracje DB + inicjalizacja managerów
 app.whenReady().then(async () => {
   try {
@@ -123,8 +163,16 @@ app.whenReady().then(async () => {
       logger.warn('OpenAI API Key is not set in settings.');
     }
 
-    // Zainicjalizuj LLMManager z kluczem API
-    llmManager = new LLMManager({ logger, serverManager, apiKey });
+    // Konfiguracja routingu LLM (wewnętrzny vs zewnętrzny + anonimizacja).
+    const llmRoutingConfig = await loadLLMRoutingConfig();
+
+    // Zainicjalizuj LLMManager z kluczem API i konfiguracją routingu.
+    llmManager = new LLMManager({
+      logger,
+      serverManager,
+      apiKey,
+      ...llmRoutingConfig,
+    });
   } catch (error) {
     logger.error('Failed to run migrations or initialize managers', error);
     // Zainicjalizuj LLMManager bez klucza, jeśli wystąpi błąd
@@ -882,6 +930,21 @@ ipcMain.handle(
     if (newApiKey && llmManager) {
       llmManager.setApiKey(newApiKey);
       logger.info('LLM API key updated dynamically');
+    }
+
+    // Jeśli zmieniono konfigurację routingu LLM — przebuduj pipeline na żywo.
+    if (
+      llmManager &&
+      keys.some(
+        (k) => k === 'llm.provider' || k === 'llm.model' || k.startsWith('llm.local.') || k === 'llm.allowAnonymization'
+      )
+    ) {
+      try {
+        llmManager.setLLMConfig(await loadLLMRoutingConfig());
+        logger.info('LLM routing config updated dynamically');
+      } catch (e) {
+        logger.error('Nie udało się zaktualizować konfiguracji routingu LLM', e);
+      }
     }
 
     await logger.logAuditLike({
