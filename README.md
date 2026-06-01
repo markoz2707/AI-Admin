@@ -144,6 +144,38 @@ llm.local.model         np. llama3.1
 > serwerami, generowanie dokumentacji środowiska) budowana jest jako kolejna
 > warstwa na tym fundamencie routingu.
 
+## Orkiestrator i guardrail (bezpieczne wykonywanie)
+
+Zadania generowane przez LLM nie są wykonywane „na ślepo”. Między planem a
+powłoką stoi warstwa bezpieczeństwa (`modules/llm/`):
+
+- `command-guard.js` — ocenia każde polecenie i przypisuje ryzyko:
+  - `critical` → **blokada** (np. `rm -rf /`, `mkfs`, `dd ... of=/dev/sda`,
+    `curl | sh`, `shutdown`, fork bomb, `format C:`) — nigdy nie wykonywane,
+  - `high` → wymaga **jawnego zatwierdzenia** (`approveHighRisk`, tylko admin) —
+    np. `sudo`, `userdel`, `systemctl stop`, wyłączenie firewalla,
+  - `medium`/`low` → operacje typowe/odczytowe.
+- `plan-schema.js` — wymusza **strukturalny** plan (kroki z `command`/`type`),
+  zamiast wykonywać prozę modelu.
+- `orchestrator.js` — buduje podgląd planu z oceną ryzyka, obsługuje **dry-run**,
+  bramkę zatwierdzania, `stopOnError`, a wykonanie deleguje do wstrzykniętego
+  executora.
+
+`LLMManager` kieruje **każde** polecenie (w tym instalacje pakietów) przez
+`_runGuardedCommand`, a nazwy pakietów/argumenty są escapowane
+(`modules/access/shell-escape.js`). `processAndExecutePrompt` domyślnie **nie
+wykonuje** — zwraca `guardedPlan` (kroki + ryzyko) do zatwierdzenia. Wykonanie
+wymaga `autoExecute: true`, a kroki wysokiego ryzyka dodatkowo
+`approveHighRisk: true`.
+
+```
+llmManager.processAndExecutePrompt(prompt, serverId, {
+  autoExecute: false,   // domyślnie: tylko plan + ocena ryzyka
+  dryRun: false,        // pokaż dokładne polecenia bez wykonania
+  approveHighRisk: false // zgoda na kroki 'high' (w IPC: tylko admin)
+})
+```
+
 ## Licencja
 
 ISC

@@ -84,12 +84,14 @@ const api = {
   },
 
   llm: {
-    ask: ({ prompt, serverId, includeContext, autoExecute }) =>
+    ask: ({ prompt, serverId, includeContext, autoExecute, approveHighRisk, dryRun }) =>
       ipcRenderer.invoke('llm:ask', {
         prompt,
         serverId,
         includeContext,
         autoExecute,
+        approveHighRisk,
+        dryRun,
         sessionToken: currentSessionToken,
       }),
     history: (limit) =>

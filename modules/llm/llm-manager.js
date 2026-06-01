@@ -18,8 +18,11 @@
 const LLMRouter = require('./llm-router'); // router: wewnętrzny vs zewnętrzny LLM
 const TaskGenerator = require('./task-generator');
 const PromptProcessor = require('./prompt-processor');
+const Orchestrator = require('./orchestrator');
+const { evaluateCommand } = require('./command-guard');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
+const { shQuote, winCmdArg } = require('../access/shell-escape');
 const llmTaskRepo = require('./llm-task-repo');
 const commandHistoryRepo = require('../history/command-history-repo');
 
@@ -53,9 +56,52 @@ class LLMManager {
    this.llmTaskRepo = llmTaskRepo;
    this.commandHistoryRepo = commandHistoryRepo;
 
+   // Orchestrator: guardrail + dry-run + bramka zatwierdzania.
+   this.orchestrator = new Orchestrator({ logger: this.logger });
+
    // In-memory historia dalej utrzymywana jako cache, ale źródłem prawdy jest DB.
    // Map: serverId -> [{ id, prompt, plan, tasks, executionResults, status, createdAt }]
    this.taskHistory = new Map();
+ }
+
+ /**
+  * Jedyny punkt wykonywania poleceń przez LLM. Każde polecenie przechodzi przez
+  * guardrail:
+  *  - 'critical' -> blokada (GUARD_BLOCKED),
+  *  - 'high'     -> wymaga approveHighRisk (NEEDS_APPROVAL),
+  *  - dryRun     -> zwraca podgląd bez wykonania.
+  * @param {number|string} serverId
+  * @param {string} command
+  * @param {Object} [opts] – { approveHighRisk, dryRun }
+  */
+ async _runGuardedCommand(serverId, command, opts = {}) {
+   const guard = evaluateCommand(command);
+
+   if (!guard.allowed) {
+     const err = new Error(
+       `Polecenie zablokowane przez guardrail: ${guard.violations.map((v) => v.reason).join(', ')}`
+     );
+     err.code = 'GUARD_BLOCKED';
+     err.guard = guard;
+     throw err;
+   }
+   if (guard.risk === 'high' && !opts.approveHighRisk) {
+     const err = new Error(
+       `Polecenie wysokiego ryzyka wymaga zatwierdzenia: ${guard.violations.map((v) => v.reason).join(', ')}`
+     );
+     err.code = 'NEEDS_APPROVAL';
+     err.guard = guard;
+     throw err;
+   }
+
+   if (opts.dryRun) {
+     return { dryRun: true, command, guard, stdout: '', stderr: '', code: 0 };
+   }
+
+   if (!this.serverManager.isServerConnected(serverId)) {
+     await this.serverManager.connectToServer(serverId);
+   }
+   return this.serverManager.executeCommand(serverId, command);
  }
 
  /** Buduje router LLM oraz zależne komponenty na podstawie this._llmConfig. */
@@ -105,15 +151,28 @@ class LLMManager {
 
   /**
    * Główna metoda orchestration.
+   *
+   * Bezpieczeństwo: domyślnie NIE wykonuje (autoExecute=false) — zwraca plan
+   * z oceną ryzyka (guardedPlan) do zatwierdzenia w UI. Wykonanie wymaga jawnego
+   * autoExecute=true, a kroki wysokiego ryzyka dodatkowo approveHighRisk=true.
+   * Polecenia 'critical' są zawsze blokowane przez guardrail.
+   *
    * @param {string} prompt
    * @param {number|string} serverId
    * @param {Object} options
-   *  - autoExecute?: boolean (default: true)
+   *  - autoExecute?: boolean (default: false)
+   *  - approveHighRisk?: boolean (default: false)
+   *  - dryRun?: boolean (default: false)
    *  - stopOnError?: boolean (default: true)
-   * @returns {Promise<{plan: string, tasks: Array, executionResults: Array, status: string}>}
+   * @returns {Promise<{plan, tasks, guardedPlan, executionResults, status}>}
    */
   async processAndExecutePrompt(prompt, serverId, options = {}) {
-    const { autoExecute = true, stopOnError = true } = options;
+    const {
+      autoExecute = false,
+      stopOnError = true,
+      approveHighRisk = false,
+      dryRun = false,
+    } = options;
 
     if (!prompt || String(prompt).trim().length === 0) {
       throw new Error('Prompt nie może być pusty');
@@ -144,13 +203,20 @@ class LLMManager {
         serverConfig
       );
 
+      // 2b. Podgląd planu z oceną ryzyka (guardrail) — zawsze dostępny.
+      const { planFromTasks } = require('./plan-schema');
+      const normalized = planFromTasks(tasks, plan);
+      const guardedPlan = this.orchestrator.buildPlan(normalized);
+
       let executionResults = [];
       let status = 'planned';
 
-      // 3. Opcjonalne wykonanie planu
+      // 3. Opcjonalne wykonanie planu (domyślnie WYŁĄCZONE).
       if (autoExecute && tasks.length > 0) {
         executionResults = await this._executeTasksInternal(serverId, tasks, {
           stopOnError,
+          approveHighRisk,
+          dryRun,
         });
         status =
           executionResults.some((r) => r.status === 'error') && stopOnError
@@ -206,6 +272,7 @@ class LLMManager {
        prompt,
        plan,
        tasks,
+       guardedPlan,
        executionResults,
        status,
        createdAt: llmTask.created_at || new Date().toISOString(),
@@ -216,12 +283,15 @@ class LLMManager {
       this.logger.logAction('LLM_PROMPT_PROCESSED', {
         serverId,
         status,
+        autoExecute,
+        maxRisk: guardedPlan.maxRisk,
         tasks: tasks.length,
       });
 
       return {
         plan,
         tasks,
+        guardedPlan,
         executionResults,
         status,
       };
@@ -378,13 +448,16 @@ class LLMManager {
    * tasks: [{ id?, type, description, command?, serviceName?, action? }]
    */
   async _executeTasksInternal(serverId, tasks, options = {}) {
-    const { stopOnError = true } = options;
+    const { stopOnError = true, approveHighRisk = false, dryRun = false } = options;
     const results = [];
 
     for (const task of tasks) {
       const taskId = task.id || generateId();
       try {
-        const execResult = await this._executeSingleTask(serverId, task);
+        const execResult = await this._executeSingleTask(serverId, task, {
+          approveHighRisk,
+          dryRun,
+        });
         const entry = {
           taskId,
           type: task.type,
@@ -438,16 +511,16 @@ class LLMManager {
 
   /**
    * Mapuje pojedyncze zadanie na konkretne operacje managerów.
+   * @param {number|string} serverId
+   * @param {Object} task
+   * @param {Object} [opts] – { approveHighRisk, dryRun }
    */
-  async _executeSingleTask(serverId, task) {
+  async _executeSingleTask(serverId, task, opts = {}) {
     const type = (task.type || '').toLowerCase();
 
-    // Obsługa komend shell
+    // Obsługa komend shell — przez guardrail.
     if (type === 'command' && task.command) {
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
-      }
-      return this.serverManager.executeCommand(serverId, task.command);
+      return this._runGuardedCommand(serverId, task.command, opts);
     }
 
     // Obsługa usług
@@ -488,30 +561,28 @@ class LLMManager {
       if (!this.serverManager.isServerConnected(serverId)) {
         await this.serverManager.connectToServer(serverId);
       }
-      // Generuj komendę instalacji w zależności od OS
+      // Generuj komendę instalacji w zależności od OS.
+      // Nazwa pakietu jest escapowana (anty-injection), a całość przechodzi
+      // przez guardrail w _runGuardedCommand.
       const server = await this.serverManager.getServer(serverId);
       const os = (server?.os || 'linux').toLowerCase();
       let installCmd;
       if (os === 'windows') {
-        installCmd = `choco install ${packageName} -y`;
+        installCmd = `choco install ${winCmdArg(packageName)} -y`;
       } else {
-        // Linux - sprawdź dostępny menedżer pakietów
-        installCmd = `if command -v apt-get &> /dev/null; then sudo apt-get install -y ${packageName}; elif command -v yum &> /dev/null; then sudo yum install -y ${packageName}; elif command -v dnf &> /dev/null; then sudo dnf install -y ${packageName}; else echo "Nieznany menedżer pakietów"; exit 1; fi`;
+        const pkg = shQuote(packageName);
+        installCmd = `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y ${pkg}; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y ${pkg}; elif command -v yum >/dev/null 2>&1; then sudo yum install -y ${pkg}; else echo "Nieznany menedżer pakietów"; exit 1; fi`;
       }
-      this.logger.info(`Wykonywanie komendy instalacji: ${installCmd}`);
-      return this.serverManager.executeCommand(serverId, installCmd);
+      this.logger.info(`Komenda instalacji (przed guardrailem): ${installCmd}`);
+      return this._runGuardedCommand(serverId, installCmd, opts);
     }
 
     // Inne typy można rozbudować (user/share itp.)
     // TODO: mapowanie typów 'user', 'share' itd.
 
-    // Jeśli jest konkretna komenda, wykonaj ją
+    // Jeśli jest konkretna komenda, wykonaj ją — przez guardrail.
     if (task.command) {
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
-      }
-      this.logger.info(`Wykonywanie komendy: ${task.command}`);
-      return this.serverManager.executeCommand(serverId, task.command);
+      return this._runGuardedCommand(serverId, task.command, opts);
     }
 
     throw new Error(`Nieobsługiwany typ zadania: ${task.type}. Brak komendy do wykonania.`);

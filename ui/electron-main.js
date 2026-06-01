@@ -748,21 +748,27 @@ ipcMain.handle(
   wrapHandler(
     'llm:ask',
     async (
-      { prompt, serverId, autoExecute, sessionToken },
+      { prompt, serverId, autoExecute, approveHighRisk, dryRun, sessionToken },
       _event,
       context
     ) => {
+      // RBAC: tylko admin może zatwierdzać kroki wysokiego ryzyka.
+      const isAdmin = context.user && context.user.role === ROLES.ADMIN;
       const result = await llmManager.processAndExecutePrompt(
         prompt,
         serverId,
         {
-          autoExecute,
+          autoExecute: !!autoExecute,
+          approveHighRisk: !!approveHighRisk && isAdmin,
+          dryRun: !!dryRun,
           appUserId: context.user ? context.user.id : null,
         }
       );
       logger.logAction('LLM_ASK', {
         serverId,
-        autoExecute,
+        autoExecute: !!autoExecute,
+        approveHighRisk: !!approveHighRisk && isAdmin,
+        dryRun: !!dryRun,
         actorUserId: context.user ? context.user.id : null,
       });
       return result;
