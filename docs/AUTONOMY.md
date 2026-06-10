@@ -234,15 +234,27 @@ zmienia kolejność roadmapy.
   (`find -delete`, `shred`, `base64|sh`, `bash -c "$(curl…)"`).
 - **Blokada nieodtworzonego placeholdera anonimizacji** w poleceniu
   (`[[TYP_n]]` → critical) — defense-in-depth przeciw wyciekowi tokenów do shella.
+- **Wydzielony control plane (`AppService`) niezależny od Electrona.** Konstrukcja
+  managerów/repozytoriów/LLM oraz cykl życia (start/stop, migracje, journal,
+  recovery) są w `modules/service/app-service.js`. Electron używa go jako rdzenia
+  (UI = klient), a `service/headless.js` uruchamia ten sam backend jako
+  zawsze-włączoną usługę (`npm run start:service`) z `/health` i czystym
+  zamknięciem. To pierwszy krok rozdziału UI ↔ usługa.
+- **Trwały journal wykonania (`modules/journal/execution-journal.js`).** Stany
+  kroków (pending/executing/done/error/skipped/needs_verification), idempotencja
+  (krok 'done' nie jest ponawiany przy wznowieniu), wykrycie kroków przerwanych
+  awarią (zostają 'executing') i **recovery bez ślepego ponowienia** (przerwane →
+  needs_verification). Wpięty w `LLMManager.executePlan`; `AppService.start`
+  wykonuje recovery.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
-1. **Wydzielenie zawsze-włączonej usługi (headless) z Electrona.** Autonomia z
-   aplikacji desktopowej, która znika po zamknięciu, jest sprzeczna — Electron
-   ma być klientem, agent usługą (ten sam kod Node).
-2. **Trwały journal wykonania + transakcyjność typu saga**: stany kroków
-   (pending/executing/done/compensated), klucze idempotencji, **read-back przed
-   ponowieniem** po zerwaniu SSH/crashu kontrolera.
+1. **Dokończyć rozdział usługa ↔ UI**: uwierzytelniony transport poleceń
+   (sesja + RBAC) między klientem Electron a usługą headless; dziś headless
+   wystawia tylko read-only `/health`. Pełny journal jako jedyne źródło prawdy o
+   stanie wykonania (obecnie magazyn planów jest in-memory).
+2. **Transakcyjność typu saga / kompensacje**: read-back przed ponowieniem,
+   automatyczna weryfikacja kroków `needs_verification` po restarcie.
 3. **Weryfikacja po wykonaniu** jako obowiązkowa część kontraktu capability
    (postconditions, timeouty, wykrywanie flappingu) — `verification: []` nie może
    pozostać pustym polem.

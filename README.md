@@ -211,6 +211,36 @@ window.api.env.detectOS(serverId)            // wykryj i zweryfikuj OS
 window.api.env.collect(serverId, anonymize)  // migawka środowiska (opcjonalnie anonimizowana)
 ```
 
+## Control plane jako usługa (headless) + journal wykonania
+
+Backend jest wydzielony do `modules/service/app-service.js` (`AppService`) —
+buduje managery/repozytoria/LLM i zarządza cyklem życia (migracje, journal,
+odzyskiwanie, LLM). Dzięki temu ten sam kod działa pod Electronem **oraz** jako
+zawsze-włączona usługa:
+
+```bash
+npm start            # aplikacja Electron (UI + control plane w procesie głównym)
+npm run start:service  # sam control plane (headless), bez UI
+```
+
+Usługa headless wystawia lokalnie (127.0.0.1) endpoint `GET /health` ze statusem
+routingu LLM i aktywnych połączeń oraz kończy się czysto na SIGINT/SIGTERM
+(rozłącza serwery). Port/host: `AI_ADMIN_SERVICE_PORT` (domyślnie 7733),
+`AI_ADMIN_SERVICE_HOST`.
+
+**Journal wykonania** (`modules/journal/execution-journal.js`) zapewnia trwałość
+i odporność na awarie wielokrokowych planów:
+
+- stany kroków: `pending → executing → done/error` (oraz `skipped`,
+  `needs_verification`),
+- **idempotencja** — krok `done` nie jest wykonywany ponownie przy wznowieniu,
+- **odzyskiwanie po awarii** — kroki przerwane (zostają `executing`) trafiają do
+  `needs_verification` zamiast ślepego ponowienia (`AppService.start` woła
+  recovery przy każdym uruchomieniu).
+
+Journal jest wpięty w `LLMManager.executePlan` (best-effort — awaria journala nie
+blokuje wykonania) i działa na SQLite, z fallbackiem in-memory.
+
 ## Licencja
 
 ISC

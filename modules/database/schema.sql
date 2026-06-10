@@ -291,3 +291,28 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE INDEX IF NOT EXISTS idx_schema_migrations_name
     ON schema_migrations (name);
+
+-- =====================================================================
+-- Tabela: execution_journal
+-- Trwały journal wykonania planów (idempotencja + odzyskiwanie po awarii).
+-- Tworzona także defensywnie w kodzie (ExecutionJournal.ensureReady).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS execution_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id TEXT NOT NULL,
+    plan_hash TEXT,
+    server_id INTEGER,
+    step_id TEXT NOT NULL,
+    step_index INTEGER,
+    command TEXT,
+    status TEXT NOT NULL DEFAULT 'pending', -- pending/executing/done/error/skipped/needs_verification
+    attempt INTEGER NOT NULL DEFAULT 0,
+    result TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (plan_id, step_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_journal_status
+    ON execution_journal (status);

@@ -21,6 +21,7 @@ const PromptProcessor = require('./prompt-processor');
 const Orchestrator = require('./orchestrator');
 const { evaluateCommand } = require('./command-guard');
 const { planFromTasks, computePlanHash } = require('./plan-schema');
+const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
 const { shQuote, winCmdArg, assertIdentifier } = require('../access/shell-escape');
@@ -37,9 +38,13 @@ class LLMManager {
      policy = undefined,
      local = undefined,
      allowAnonymization = undefined,
+     journal = null,
    } = config;
 
    this.logger = logger || new Logger('llm-manager.log');
+
+   // Trwały journal wykonania (idempotencja + odzyskiwanie po awarii).
+   this._journal = journal;
 
    // Konfiguracja routingu LLM (trzymana, by móc rebuildować pipeline).
    this._llmConfig = {
@@ -152,6 +157,37 @@ class LLMManager {
    return this.router.getStatus();
  }
 
+ /** Leniwie tworzy journal wykonania (SQLite lub in-memory fallback). */
+ _getJournal() {
+   if (!this._journal) {
+     this._journal = ExecutionJournal.createDefault();
+   }
+   return this._journal;
+ }
+
+ /** Wywołuje operację journala best-effort — awaria journala nie blokuje wykonania. */
+ async _journalSafe(fn) {
+   try {
+     return await fn();
+   } catch (err) {
+     this.logger.error('Błąd journala wykonania (kontynuuję)', err);
+     return null;
+   }
+ }
+
+ /**
+  * Odzyskiwanie po awarii: kroki przerwane (status 'executing') trafiają do
+  * 'needs_verification' zamiast ślepego ponowienia. Zwraca listę takich kroków.
+  */
+ async recoverInterruptedPlans() {
+   try {
+     return await this._getJournal().recover();
+   } catch (err) {
+     this.logger.error('Błąd odzyskiwania journala wykonania', err);
+     return [];
+   }
+ }
+
   // --- Public API ---
 
   /**
@@ -232,25 +268,71 @@ class LLMManager {
       ? Object.keys(options.approvals).filter((k) => options.approvals[k])
       : [];
     const os = stored.os;
+    const journal = this._getJournal();
+    const dryRun = !!options.dryRun;
+
+    // Zarejestruj kroki w journalu (idempotentnie) — chyba że dry-run.
+    if (!dryRun) {
+      await this._journalSafe(() =>
+        journal.startRun({ planId, planHash: stored.planHash, serverId, steps: stored.steps })
+      );
+    }
 
     const executor = async (step) => {
+      // Idempotencja: krok już wykonany (np. wznowienie) nie powtarza się.
+      if (!dryRun && (await this._journalSafe(() => journal.isStepDone(planId, step.id)))) {
+        return { skipped: true, reason: 'idempotent: krok już wykonany' };
+      }
+      if (!dryRun) await this._journalSafe(() => journal.beginStep(planId, step.id));
+
       // Defense-in-depth: krytyczne polecenie nigdy nie przechodzi.
       const g = evaluateCommand(step.command, { os });
       if (!g.allowed) {
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'error', error: 'GUARD_BLOCKED' })
+          );
+        }
         const e = new Error('Polecenie zablokowane przez guardrail'); e.code = 'GUARD_BLOCKED'; throw e;
       }
       if (!this.serverManager.isServerConnected(serverId)) {
         await this.serverManager.connectToServer(serverId);
       }
-      return this.serverManager.executeCommand(serverId, step.command, {
-        actorUserId: options.appUserId || null, source: 'llm',
-      });
+      try {
+        const res = await this.serverManager.executeCommand(serverId, step.command, {
+          actorUserId: options.appUserId || null, source: 'llm',
+        });
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'done', result: res })
+          );
+        }
+        return res;
+      } catch (err) {
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'error', error: err.message })
+          );
+        }
+        throw err;
+      }
     };
 
     const { status, results } = await this.orchestrator.execute(
       { summary: stored.summary, steps: stored.steps },
-      { executor, approvals, dryRun: !!options.dryRun, stopOnError: options.stopOnError !== false, os }
+      { executor, approvals, dryRun, stopOnError: options.stopOnError !== false, os }
     );
+
+    // Odzwierciedl w journalu kroki, które nie były wykonane (blocked/needs_approval/skipped).
+    if (!dryRun) {
+      for (const r of results) {
+        if (['blocked', 'needs_approval', 'skipped'].includes(r.status)) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, r.id, { status: r.status === 'needs_approval' ? 'pending' : r.status })
+          );
+        }
+      }
+    }
 
     await this._persistExecution(serverId, {
       prompt: stored.prompt, plan: stored.summary, status, results, appUserId: options.appUserId,

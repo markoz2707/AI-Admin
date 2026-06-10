@@ -5,6 +5,7 @@
   "main": "ui/electron-main.js",
   "scripts": {
     "start": "electron ui/electron-main.js",
+    "start:service": "node service/headless.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },

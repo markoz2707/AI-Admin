@@ -3,18 +3,9 @@ const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 
 // Backend modules
-const {
-  ServerManager,
-  ServiceManager,
-  UserManager,
-  ShareManager,
-  PackageManager,
-  LogsManager,
-} = require('../modules/management');
+const AppService = require('../modules/service/app-service');
 const passwordManager = require('../modules/password-manager/password-manager');
-const LLMManager = require('../modules/llm/llm-manager');
-const migrationManager = require('../modules/database/migration-manager');
-const { encrypt, decrypt } = require('../modules/database/encryption-manager');
+const { encrypt } = require('../modules/database/encryption-manager');
 const osDetector = require('../modules/management/os-detector');
 const environmentCollector = require('../modules/management/environment-collector');
 const Logger = require('../modules/access/logger');
@@ -28,18 +19,18 @@ const CommandHistoryRepository = require('../modules/history/command-history-rep
 const logger = new Logger('ui-ipc.log');
 
 let mainWindow;
-// globalne instancje
-const serverManager = new ServerManager();
-const serviceManager = new ServiceManager(serverManager.accessManager, logger);
-const userManager = new UserManager(serverManager.accessManager, logger);
-const shareManager = new ShareManager(serverManager.accessManager, logger);
-const packageManager = PackageManager
-  ? new PackageManager(serverManager, logger)
-  : null;
-const logsManager = LogsManager
-  ? new LogsManager(serverManager, logger)
-  : null;
-let llmManager; // Zmienione na let, inicjalizacja w whenReady
+
+// Control plane wspólny dla Electrona i trybu headless (ten sam backend).
+const appService = new AppService({ logger });
+const {
+  serverManager,
+  serviceManager,
+  userManager,
+  shareManager,
+  packageManager,
+  logsManager,
+} = appService;
+let llmManager; // inicjalizowane przez appService.start() w whenReady
 const appUserRepo = AppUserRepository;
 const sessionRepo = SessionRepository;
 const settingsRepo = SettingsRepository;
@@ -111,74 +102,14 @@ function createWindow() {
   });
 }
 
-/**
- * Czyta z ustawień konfigurację routingu LLM (wewnętrzny vs zewnętrzny).
- * Klucze (scope 'global'):
- *  - llm.provider           : 'auto' | 'openai' | 'local' | 'anonymize'  (polityka)
- *  - llm.model              : model zewnętrzny (np. 'gpt-4o-mini')
- *  - llm.allowAnonymization : bool (czy wolno anonimizować i wysyłać na zewnątrz)
- *  - llm.local.enabled      : bool
- *  - llm.local.baseUrl      : np. 'http://localhost:11434'
- *  - llm.local.model        : np. 'llama3.1'
- * @returns {Promise<Object>} fragment configu dla LLMManager
- */
-async function loadLLMRoutingConfig() {
-  const get = async (key, dflt) => {
-    try {
-      const v = await settingsRepo.get('global', key);
-      return v === null || v === undefined ? dflt : v;
-    } catch {
-      return dflt;
-    }
-  };
-
-  const provider = await get('llm.provider', 'auto');
-  // Zmapuj wartości UI na polityki routera (puste/openai -> auto, by nie blokować).
-  const policy =
-    provider === 'local' || provider === 'anonymize' || provider === 'openai'
-      ? provider
-      : 'auto';
-
-  return {
-    policy,
-    externalModel: (await get('llm.model', '')) || undefined,
-    allowAnonymization: (await get('llm.allowAnonymization', true)) !== false,
-    local: {
-      enabled: (await get('llm.local.enabled', false)) === true,
-      baseUrl: (await get('llm.local.baseUrl', '')) || undefined,
-      model: (await get('llm.local.model', '')) || undefined,
-    },
-  };
-}
-
-// Start: okno + migracje DB + inicjalizacja managerów
+// Start: okno + uruchomienie control plane (migracje, journal, recovery, LLM).
 app.whenReady().then(async () => {
   try {
-    await migrationManager.runMigrations();
-    logger.info('Migrations executed successfully');
-
-    // Wczytaj i zdeszyfruj klucz API dla LLM
-    const apiKeySetting = await settingsRepo.get('global', 'llm.apiKey');
-    // settingsRepo.get() returns the value directly, not an object
-    const apiKey = apiKeySetting ? decrypt(apiKeySetting) : null;
-    if (!apiKey) {
-      logger.warn('OpenAI API Key is not set in settings.');
-    }
-
-    // Konfiguracja routingu LLM (wewnętrzny vs zewnętrzny + anonimizacja).
-    const llmRoutingConfig = await loadLLMRoutingConfig();
-
-    // Zainicjalizuj LLMManager z kluczem API i konfiguracją routingu.
-    llmManager = new LLMManager({
-      logger,
-      serverManager,
-      apiKey,
-      ...llmRoutingConfig,
-    });
+    await appService.start();
+    llmManager = appService.llmManager;
+    logger.info('Control plane uruchomiony (AppService)');
   } catch (error) {
-    logger.error('Failed to run migrations or initialize managers', error);
-    // Zainicjalizuj LLMManager bez klucza, jeśli wystąpi błąd
-    llmManager = new LLMManager({ logger, serverManager });
+    logger.error('Nie udało się uruchomić control plane', error);
   }
   createWindow();
 });
@@ -1047,7 +978,7 @@ ipcMain.handle(
       )
     ) {
       try {
-        llmManager.setLLMConfig(await loadLLMRoutingConfig());
+        await appService.reloadLLMConfig();
         logger.info('LLM routing config updated dynamically');
       } catch (e) {
         logger.error('Nie udało się zaktualizować konfiguracji routingu LLM', e);
