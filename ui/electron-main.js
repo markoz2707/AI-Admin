@@ -750,28 +750,61 @@ ipcMain.handle(
   wrapHandler(
     'llm:ask',
     async (
-      { prompt, serverId, autoExecute, approveHighRisk, dryRun, sessionToken },
+      { prompt, serverId, autoExecute, dryRun, sessionToken },
       _event,
       context
     ) => {
-      // RBAC: tylko admin może zatwierdzać kroki wysokiego ryzyka.
-      const isAdmin = context.user && context.user.role === ROLES.ADMIN;
-      const result = await llmManager.processAndExecutePrompt(
-        prompt,
-        serverId,
-        {
-          autoExecute: !!autoExecute,
-          approveHighRisk: !!approveHighRisk && isAdmin,
-          dryRun: !!dryRun,
-          appUserId: context.user ? context.user.id : null,
-        }
-      );
+      // Tryb jednowywołaniowy: buduje plan i — przy autoExecute — wykonuje
+      // WYŁĄCZNIE kroki autonomiczne (low/medium). Kroki wysokiego ryzyka i
+      // krytyczne nie są tu wykonywane — wymagają osobnego llm:executePlan z
+      // zatwierdzeniem per-krok (ochrona przed TOCTOU).
+      const result = await llmManager.processAndExecutePrompt(prompt, serverId, {
+        autoExecute: !!autoExecute,
+        dryRun: !!dryRun,
+        appUserId: context.user ? context.user.id : null,
+      });
       logger.logAction('LLM_ASK', {
         serverId,
         autoExecute: !!autoExecute,
-        approveHighRisk: !!approveHighRisk && isAdmin,
         dryRun: !!dryRun,
+        status: result.status,
         actorUserId: context.user ? context.user.id : null,
+      });
+      return result;
+    }
+  )
+);
+
+// LLM: wykonanie wcześniej zbudowanego planu z zatwierdzeniem per-krok.
+// Plan jest pinowany hashem (planHash) — wykonanie odmawia, jeśli plan zmienił
+// się od podglądu. Zatwierdzać kroki wysokiego ryzyka może tylko admin.
+ipcMain.handle(
+  'llm:executePlan',
+  wrapHandler(
+    'llm:executePlan',
+    async ({ serverId, planId, planHash, approvals, dryRun }, _event, context) => {
+      const isAdmin = context.user && context.user.role === ROLES.ADMIN;
+      // Zgody na kroki 'high' honorujemy tylko dla admina.
+      const effectiveApprovals = isAdmin ? approvals || [] : [];
+      const result = await llmManager.executePlan(serverId, planId, {
+        planHash,
+        approvals: effectiveApprovals,
+        dryRun: !!dryRun,
+        appUserId: context.user ? context.user.id : null,
+      });
+      await logger.logAuditLike({
+        actionType: 'LLM_PLAN_EXECUTE',
+        targetType: 'server',
+        targetId: serverId,
+        actorUserId: context.user ? context.user.id : null,
+        source: 'ui',
+        success: result.status !== 'blocked' && result.status !== 'partial_error',
+        details: {
+          planId,
+          status: result.status,
+          approvedSteps: effectiveApprovals.length,
+          dryRun: !!dryRun,
+        },
       });
       return result;
     }

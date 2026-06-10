@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const Orchestrator = require('../modules/llm/orchestrator');
-const { parsePlan, planFromTasks } = require('../modules/llm/plan-schema');
+const { parsePlan, planFromTasks, computePlanHash } = require('../modules/llm/plan-schema');
 
 test('buildPlan ocenia ryzyko i flaguje zatwierdzenie', () => {
   const o = new Orchestrator();
@@ -83,4 +83,31 @@ test('planFromTasks mapuje zadania installation', () => {
   const plan = planFromTasks([{ type: 'installation', app: 'nginx', description: 'inst' }], 'plan');
   assert.strictEqual(plan.steps[0].type, 'installation');
   assert.strictEqual(plan.steps[0].packageName, 'nginx');
+});
+
+test('computePlanHash jest stabilny i czuły na zmianę polecenia (anty-TOCTOU)', () => {
+  const a = [{ type: 'command', command: 'apt-get install -y nginx' }];
+  const b = [{ type: 'command', command: 'apt-get install -y nginx' }];
+  const c = [{ type: 'command', command: 'apt-get install -y apache2' }];
+  assert.strictEqual(computePlanHash(a), computePlanHash(b));
+  assert.notStrictEqual(computePlanHash(a), computePlanHash(c));
+});
+
+test('execute: zgoda per-krok (approvals) odblokowuje tylko wskazany krok high', async () => {
+  const o = new Orchestrator();
+  const plan = {
+    steps: [
+      { id: 's1', type: 'command', command: 'sudo systemctl restart nginx' },
+      { id: 's2', type: 'command', command: 'sudo userdel bob' },
+    ],
+  };
+  const calls = [];
+  const res = await o.execute(plan, {
+    approvals: ['s1'],
+    stopOnError: false,
+    executor: async (s) => { calls.push(s.id); return { code: 0 }; },
+  });
+  assert.strictEqual(res.results[0].status, 'success');         // zatwierdzony
+  assert.strictEqual(res.results[1].status, 'needs_approval');  // niezatwierdzony
+  assert.deepStrictEqual(calls, ['s1']);
 });

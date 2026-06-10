@@ -67,6 +67,7 @@ const PERMISSIONS = {
 
   // LLM
   'llm:ask': [ROLES.ADMIN, ROLES.OPERATOR], // autoExecute ograniczymy dodatkowo w logice
+  'llm:executePlan': [ROLES.ADMIN, ROLES.OPERATOR], // zatwierdzanie kroków high tylko admin (w logice)
   'llm:history': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
   'llm:report': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
 

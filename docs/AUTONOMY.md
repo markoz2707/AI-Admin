@@ -205,3 +205,69 @@ sam, poza zakresem → APPROVAL. Zamienia jednorazowe zadania w ciągłe utrzyma
 - **Ryzyko liczone z metadanych akcji**, nie z dopasowania stringów —
   guardrail poleceń pozostaje ostatnią linią obrony.
 - **Każda decyzja audytowalna i odtwarzalna**, z zapisanym uzasadnieniem.
+
+## 14. Addendum: wnioski z niezależnej recenzji (Fable 5)
+
+Recenzja architektoniczna ujawniła luki, których część już naprawiono, a część
+zmienia kolejność roadmapy.
+
+### Zrealizowane (poprawność wykonania przed nowymi funkcjami)
+
+- **Naprawiony TOCTOU zatwierdzania.** Plan jest pinowany deterministycznym
+  hashem (`plan-schema.computePlanHash`). Przepływ: `buildPlan` (podgląd + hash)
+  → `executePlan(planId, { planHash, approvals })`. Wykonanie odmawia, gdy plan
+  zmienił się od zatwierdzenia (`PLAN_CHANGED`). **Plan zatwierdzony == plan
+  wykonany.**
+- **Zgoda per-krok** zamiast blankietowej: `approvals` to zbiór id kroków;
+  tylko zatwierdzone kroki `high` się wykonują (IPC: zatwierdza wyłącznie admin).
+- **Skonsolidowane wykonanie w Orchestratorze** — usunięto dublującą ścieżkę
+  `_executeTasksInternal`/`_executeSingleTask`; status pochodzi z orchestratora
+  (naprawiony błąd `'executed'` przy samych błędach); usunięto footgun
+  `allowBlocked`.
+- **Rozstrzyganie kroków do konkretnych poleceń przy budowie planu**
+  (`_resolveStepCommand`) — podgląd, hash i wykonanie są identyczne (dotyczy też
+  instalacji pakietów i operacji na usługach, z escapowaniem/walidacją).
+- **Guard uzgodniony z polityką i domknięty dla Windows.** `reboot/shutdown` i
+  `Stop-Computer/Restart-Computer` → `high` (APPROVAL, nie FORBIDDEN). Dodano
+  wzorce PowerShell (`Format-Volume`, `Clear-Disk`, `Remove-Item -Recurse`,
+  `Disable-NetAdapter`, `Set-NetFirewallProfile -Enabled False`) oraz luki Unix
+  (`find -delete`, `shred`, `base64|sh`, `bash -c "$(curl…)"`).
+- **Blokada nieodtworzonego placeholdera anonimizacji** w poleceniu
+  (`[[TYP_n]]` → critical) — defense-in-depth przeciw wyciekowi tokenów do shella.
+
+### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
+
+1. **Wydzielenie zawsze-włączonej usługi (headless) z Electrona.** Autonomia z
+   aplikacji desktopowej, która znika po zamknięciu, jest sprzeczna — Electron
+   ma być klientem, agent usługą (ten sam kod Node).
+2. **Trwały journal wykonania + transakcyjność typu saga**: stany kroków
+   (pending/executing/done/compensated), klucze idempotencji, **read-back przed
+   ponowieniem** po zerwaniu SSH/crashu kontrolera.
+3. **Weryfikacja po wykonaniu** jako obowiązkowa część kontraktu capability
+   (postconditions, timeouty, wykrywanie flappingu) — `verification: []` nie może
+   pozostać pustym polem.
+4. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
+   `type:'command'`; `target` wiązany z inwentarzem migawki (po UUID/serialu),
+   prekondycje ewaluowane na świeżej migawce w momencie wykonania.
+5. **Obrona przed zatrutą percepcją (prompt injection).** Dane z
+   `environment-collector` pochodzą z potencjalnie skompromitowanych hostów i
+   trafiają do kontekstu LLM — traktować jako nieufne: kontekst strukturalny,
+   walidacja schematu odpowiedzi, brak wykonywania instrukcji z danych.
+6. **Aprobata pinuje też hash prekondycji stanu**, nie tylko czas — jeśli stan
+   się zmienił między zatwierdzeniem a wykonaniem, aprobata wygasa.
+7. **Self-lockout detection** — model „ścieżki zarządzania" (NIC/route/jumphost/
+   DNS, także tranzytywnie); blokada akcji odcinającej własny dostęp bez APPROVAL.
+8. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
+   powoduje approval fatigue dla rutynowych instalacji.
+9. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
+   APPROVAL) — „wykonam za T, chyba że zawetujesz".
+
+### Decyzje technologiczne (zrewidowane)
+
+- **Electron tylko jako UI; control plane jako usługa Node.** SQLite wystarcza na
+  start (WAL + journal akcji); przy wielu operatorach/HA → Postgres + lease'y.
+  Audyt wynieść poza lokalną bazę (append-only).
+- **Nie pisać warstwy wykonawczej od zera.** Rozważyć syntezę przez LLM
+  **parametrów do zweryfikowanych, idempotentnych akcji/playbooków** (model
+  zbliżony do Ansible check-mode = prawdziwy dry-run) zamiast surowych stringów
+  powłoki; providerzy infrastruktury (vSphere/cloud) przez natywne API, nie SSH.

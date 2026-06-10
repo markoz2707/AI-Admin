@@ -94,6 +94,16 @@ const api = {
         dryRun,
         sessionToken: currentSessionToken,
       }),
+    // Wykonanie zatwierdzonego planu (z pinem hasha + zgodą per-krok).
+    executePlan: ({ serverId, planId, planHash, approvals, dryRun }) =>
+      ipcRenderer.invoke('llm:executePlan', {
+        serverId,
+        planId,
+        planHash,
+        approvals,
+        dryRun,
+        sessionToken: currentSessionToken,
+      }),
     history: (limit) =>
       ipcRenderer.invoke('llm:history', { sessionToken: currentSessionToken, limit }),
     report: (taskId) =>

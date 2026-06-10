@@ -41,26 +41,29 @@ class Orchestrator {
    * Wykonuje plan przez wstrzyknięty executor.
    * @param {{summary?:string, steps:Array}} plan
    * @param {Object} options
-   *  - executor: async (step) => ({ stdout, stderr, code }) | dowolny wynik
-   *  - approveHighRisk?: boolean  (zgoda na kroki 'high')
-   *  - allowBlocked?: boolean     (NIE zalecane; pozwala na 'critical')
+   *  - executor: async (step) => wynik
+   *  - approveHighRisk?: boolean        (blankietowa zgoda na wszystkie 'high')
+   *  - approvals?: Iterable<string>     (zgoda per-krok: zbiór id kroków)
    *  - dryRun?: boolean
    *  - stopOnError?: boolean (default true)
+   *  - os?: string
    * @returns {Promise<{status:string, results:Array}>}
    */
   async execute(plan, options = {}) {
     const {
       executor,
       approveHighRisk = false,
-      allowBlocked = false,
+      approvals = null,
       dryRun = false,
       stopOnError = true,
+      os = undefined,
     } = options;
 
     if (typeof executor !== 'function' && !dryRun) {
       throw new Error('Orchestrator.execute wymaga executor() (lub dryRun=true)');
     }
 
+    const approvedSet = approvals instanceof Set ? approvals : new Set(approvals || []);
     const steps = (plan && plan.steps) || [];
     const results = [];
     let halted = false;
@@ -71,17 +74,20 @@ class Orchestrator {
         continue;
       }
 
-      const guard = step.command ? evaluateCommand(step.command) : (step.guard || { risk: 'low', allowed: true, violations: [] });
+      const guard = step.command
+        ? evaluateCommand(step.command, { os: step.os || os })
+        : (step.guard || { risk: 'low', allowed: true, violations: [] });
 
-      // 1. Blokada (critical)
-      if (!guard.allowed && !allowBlocked) {
+      // 1. Blokada (critical) — nigdy nie wykonujemy.
+      if (!guard.allowed) {
         results.push(this._mk(step, 'blocked', { guard }));
         if (stopOnError) halted = true;
         continue;
       }
 
-      // 2. Wymagane zatwierdzenie (high)
-      if (guard.risk === 'high' && !approveHighRisk) {
+      // 2. Wymagane zatwierdzenie (high) — blankietowe lub per-krok.
+      const approved = approveHighRisk || approvedSet.has(step.id);
+      if (guard.risk === 'high' && !approved) {
         results.push(this._mk(step, 'needs_approval', { guard }));
         if (stopOnError) halted = true;
         continue;

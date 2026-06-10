@@ -162,20 +162,31 @@ powłoką stoi warstwa bezpieczeństwa (`modules/llm/`):
   bramkę zatwierdzania, `stopOnError`, a wykonanie deleguje do wstrzykniętego
   executora.
 
-`LLMManager` kieruje **każde** polecenie (w tym instalacje pakietów) przez
-`_runGuardedCommand`, a nazwy pakietów/argumenty są escapowane
-(`modules/access/shell-escape.js`). `processAndExecutePrompt` domyślnie **nie
-wykonuje** — zwraca `guardedPlan` (kroki + ryzyko) do zatwierdzenia. Wykonanie
-wymaga `autoExecute: true`, a kroki wysokiego ryzyka dodatkowo
-`approveHighRisk: true`.
+### Dwuetapowy przepływ z pinem planu (ochrona przed TOCTOU)
+
+Plan, który widzisz, jest planem, który się wykona. Każdy krok jest
+rozstrzygany do konkretnego polecenia już przy budowie (podgląd == wykonanie),
+a cały plan pinowany deterministycznym hashem.
 
 ```
-llmManager.processAndExecutePrompt(prompt, serverId, {
-  autoExecute: false,   // domyślnie: tylko plan + ocena ryzyka
-  dryRun: false,        // pokaż dokładne polecenia bez wykonania
-  approveHighRisk: false // zgoda na kroki 'high' (w IPC: tylko admin)
-})
+// 1) Zbuduj plan (nic nie wykonuje) — zwraca planId, planHash, kroki z ryzykiem
+const plan = await llmManager.buildPlan(prompt, serverId);
+
+// 2) Wykonaj zatwierdzony plan — odmawia, jeśli plan się zmienił (PLAN_CHANGED)
+await llmManager.executePlan(serverId, plan.planId, {
+  planHash: plan.planHash,
+  approvals: ['step_2'], // zgoda PER-KROK na kroki 'high' (w IPC: tylko admin)
+  dryRun: false,
+});
 ```
+
+- Kroki `high` wykonują się **tylko** gdy ich `id` jest w `approvals`; `critical`
+  są zawsze blokowane.
+- `processAndExecutePrompt(prompt, serverId, { autoExecute })` to zgodny wstecznie
+  wrapper: przy `autoExecute` wykonuje **wyłącznie** kroki autonomiczne
+  (low/medium); `high` wracają jako `needs_approval` (wymagają `executePlan`).
+- IPC: `window.api.llm.executePlan({ serverId, planId, planHash, approvals })` —
+  zatwierdzać kroki wysokiego ryzyka może tylko administrator.
 
 ## Wykrywanie OS i inwentaryzacja środowiska
 

@@ -15,6 +15,8 @@
  * której wycinamy pierwszy blok {...}). Kroki bez sensownej treści są odrzucane.
  */
 
+const crypto = require('crypto');
+
 const ALLOWED_TYPES = new Set([
   'command',
   'service',
@@ -114,9 +116,30 @@ function planFromTasks(tasks = [], summary = '') {
   return { summary, steps };
 }
 
+/**
+ * Deterministyczny hash znormalizowanego planu — pin pod zatwierdzanie.
+ * Liczy się TYLKO to, co realnie zostanie wykonane (typ + rozstrzygnięte pola),
+ * dzięki czemu „plan zatwierdzony == plan wykonany" (ochrona przed TOCTOU).
+ * @param {Array} steps
+ * @returns {string} sha256 hex
+ */
+function computePlanHash(steps) {
+  const canonical = JSON.stringify(
+    (steps || []).map((s) => ({
+      type: s.type || null,
+      command: s.command || null,
+      serviceName: s.serviceName || null,
+      action: s.action || null,
+      packageName: s.packageName || null,
+    }))
+  );
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
 module.exports = {
   parsePlan,
   planFromTasks,
   normalizeStep,
+  computePlanHash,
   ALLOWED_TYPES,
 };
