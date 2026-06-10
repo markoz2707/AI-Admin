@@ -223,10 +223,16 @@ npm start            # aplikacja Electron (UI + control plane w procesie główn
 npm run start:service  # sam control plane (headless), bez UI
 ```
 
-Usługa headless wystawia lokalnie (127.0.0.1) endpoint `GET /health` ze statusem
-routingu LLM i aktywnych połączeń oraz kończy się czysto na SIGINT/SIGTERM
-(rozłącza serwery). Port/host: `AI_ADMIN_SERVICE_PORT` (domyślnie 7733),
-`AI_ADMIN_SERVICE_HOST`.
+Usługa headless wystawia lokalnie (127.0.0.1):
+- `GET /health` — status routingu LLM i aktywnych połączeń,
+- `POST /rpc { channel, payload }` — **uwierzytelniony dyspozytor poleceń**;
+  token sesji w nagłówku `x-session-token` lub `payload.sessionToken`. Sesję
+  uzyskuje się publicznym kanałem `auth:login`. RBAC i rozwiązanie sesji są
+  egzekwowane w `AppService.dispatch` (wspólna ścieżka dla UI i headless).
+
+Kończy się czysto na SIGINT/SIGTERM (rozłącza serwery). Port/host:
+`AI_ADMIN_SERVICE_PORT` (domyślnie 7733), `AI_ADMIN_SERVICE_HOST`. Przy pustej
+bazie kont `start()` tworzy początkowego administratora (hasło w logu).
 
 **Journal wykonania** (`modules/journal/execution-journal.js`) zapewnia trwałość
 i odporność na awarie wielokrokowych planów:

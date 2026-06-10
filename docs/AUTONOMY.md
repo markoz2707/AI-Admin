@@ -241,23 +241,31 @@ zmienia kolejność roadmapy.
   zawsze-włączoną usługę (`npm run start:service`) z `/health` i czystym
   zamknięciem. To pierwszy krok rozdziału UI ↔ usługa.
 - **Trwały journal wykonania (`modules/journal/execution-journal.js`).** Stany
-  kroków (pending/executing/done/error/skipped/needs_verification), idempotencja
-  (krok 'done' nie jest ponawiany przy wznowieniu), wykrycie kroków przerwanych
-  awarią (zostają 'executing') i **recovery bez ślepego ponowienia** (przerwane →
-  needs_verification). Wpięty w `LLMManager.executePlan`; `AppService.start`
-  wykonuje recovery.
+  kroków (pending/executing/done/error/skipped/needs_verification/verify_failed/
+  compensated), idempotencja (krok 'done' nie jest ponawiany przy wznowieniu),
+  wykrycie kroków przerwanych awarią (zostają 'executing') i **recovery bez
+  ślepego ponowienia** (przerwane → needs_verification). Wpięty w
+  `LLMManager.executePlan`; `AppService.start` wykonuje recovery.
+- **Uwierzytelniony transport poleceń (`AppService.dispatch` + headless
+  `POST /rpc`).** Wspólna ścieżka dla UI i usługi: rozwiązanie sesji + RBAC +
+  rejestr handlerów rdzeniowych (auth/serwery/llm/env), token w nagłówku
+  `x-session-token`. Bootstrap administratora przy pustej bazie kont.
+- **Weryfikacja po wykonaniu + saga/kompensacje (orchestrator).** Krok może mieć
+  `verify` (postcondition; kod ≠ 0 → `verify_failed`) i `compensation` (rollback).
+  Przy niepowodzeniu w trybie saga już wykonane kroki są wycofywane w odwrotnej
+  kolejności (status planu `rolled_back`). `verify`/`compensation` wchodzą do
+  hasha planu (są więc objęte zatwierdzeniem).
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
-1. **Dokończyć rozdział usługa ↔ UI**: uwierzytelniony transport poleceń
-   (sesja + RBAC) między klientem Electron a usługą headless; dziś headless
-   wystawia tylko read-only `/health`. Pełny journal jako jedyne źródło prawdy o
-   stanie wykonania (obecnie magazyn planów jest in-memory).
-2. **Transakcyjność typu saga / kompensacje**: read-back przed ponowieniem,
-   automatyczna weryfikacja kroków `needs_verification` po restarcie.
-3. **Weryfikacja po wykonaniu** jako obowiązkowa część kontraktu capability
-   (postconditions, timeouty, wykrywanie flappingu) — `verification: []` nie może
-   pozostać pustym polem.
+1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
+   źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
+   rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
+2. **Automatyczna weryfikacja kroków `needs_verification` po restarcie**
+   (read-back), z użyciem mechanizmu `verify` z saga.
+3. **`verify` jako obowiązkowy element kontraktu capability** (timeouty,
+   wykrywanie flappingu, postconditions dla zmian wielohostowych) — dziś `verify`
+   jest opcjonalne i wypełniane ręcznie/przez typed actions.
 4. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
    `type:'command'`; `target` wiązany z inwentarzem migawki (po UUID/serialu),
    prekondycje ewaluowane na świeżej migawce w momencie wykonania.

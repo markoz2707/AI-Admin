@@ -176,6 +176,23 @@ class LLMManager {
  }
 
  /**
+  * Uruchamia pomocnicze polecenie (weryfikacja/kompensacja) z guardrailem.
+  * Blokuje krytyczne; nie żurnaluje (to nie jest krok planu).
+  */
+ async _execGuardedRaw(serverId, command, os, appUserId) {
+   const g = evaluateCommand(command, { os });
+   if (!g.allowed) {
+     const e = new Error('Polecenie zablokowane przez guardrail'); e.code = 'GUARD_BLOCKED'; throw e;
+   }
+   if (!this.serverManager.isServerConnected(serverId)) {
+     await this.serverManager.connectToServer(serverId);
+   }
+   return this.serverManager.executeCommand(serverId, command, {
+     actorUserId: appUserId || null, source: 'llm',
+   });
+ }
+
+ /**
   * Odzyskiwanie po awarii: kroki przerwane (status 'executing') trafiają do
   * 'needs_verification' zamiast ślepego ponowienia. Zwraca listę takich kroków.
   */
@@ -318,17 +335,52 @@ class LLMManager {
       }
     };
 
+    // Weryfikacja po wykonaniu (postcondition): polecenie `verify` z kodem 0 = OK.
+    const verifier = async (step) => {
+      if (!step.verify) return { ok: true };
+      try {
+        const r = await this._execGuardedRaw(serverId, step.verify, os, options.appUserId);
+        const ok = (r && (r.code === 0 || r.code === undefined)) || false;
+        return { ok, detail: ok ? null : (r && (r.stderr || r.stdout)) || 'verify exit != 0' };
+      } catch (err) {
+        return { ok: false, detail: err.message };
+      }
+    };
+
+    // Kompensacja (rollback) kroku w trybie saga.
+    const compensator = async (step) => {
+      if (!step.compensation) return;
+      await this._execGuardedRaw(serverId, step.compensation, os, options.appUserId);
+    };
+
+    // Saga aktywna, gdy którykolwiek krok deklaruje kompensację.
+    const saga = !dryRun && stored.steps.some((s) => s.compensation);
+
     const { status, results } = await this.orchestrator.execute(
       { summary: stored.summary, steps: stored.steps },
-      { executor, approvals, dryRun, stopOnError: options.stopOnError !== false, os }
+      {
+        executor,
+        approvals,
+        dryRun,
+        stopOnError: options.stopOnError !== false,
+        os,
+        verifier,
+        compensator,
+        saga,
+      }
     );
 
-    // Odzwierciedl w journalu kroki, które nie były wykonane (blocked/needs_approval/skipped).
+    // Odzwierciedl w journalu kroki nie wykonane oraz wyniki weryfikacji/kompensacji.
     if (!dryRun) {
       for (const r of results) {
-        if (['blocked', 'needs_approval', 'skipped'].includes(r.status)) {
+        let jStatus = null;
+        if (r.compensated) jStatus = 'compensated';
+        else if (r.status === 'verify_failed') jStatus = 'verify_failed';
+        else if (r.status === 'needs_approval') jStatus = 'pending';
+        else if (['blocked', 'skipped'].includes(r.status)) jStatus = r.status;
+        if (jStatus) {
           await this._journalSafe(() =>
-            journal.completeStep(planId, r.id, { status: r.status === 'needs_approval' ? 'pending' : r.status })
+            journal.completeStep(planId, r.id, { status: jStatus, error: r.error || null })
           );
         }
       }

@@ -73,6 +73,28 @@ test('executePlan: krytyczne polecenie jest zablokowane', async () => {
   assert.strictEqual(executed.length, 0);
 });
 
+test('saga: nieudana weryfikacja kroku wycofuje wcześniejszy (kompensacja)', async () => {
+  const { m, executed } = setup();
+  // verify zwraca kod != 0 (postcondition niespełniony); reszta OK.
+  m.serverManager.executeCommand = async (id, cmd) => {
+    executed.push(cmd);
+    if (cmd.includes('test -f /missing')) return { stdout: '', stderr: 'brak', code: 1 };
+    return { stdout: 'ok', stderr: '', code: 0 };
+  };
+  const steps = [
+    { id: 's1', type: 'command', command: 'echo install', os: 'linux', compensation: 'echo rollback1' },
+    { id: 's2', type: 'command', command: 'echo configure', os: 'linux', verify: 'test -f /missing' },
+  ];
+  const planHash = storePlan(m, 'p1', steps);
+  // verify s2 ma kod != 0 (plik nie istnieje) -> verify_failed -> saga kompensuje s1
+  const r = await m.executePlan(1, 'p1', { planHash, stopOnError: true });
+  assert.strictEqual(r.status, 'rolled_back');
+  // wykonano: s1, s2, verify s2, kompensacja s1
+  assert.ok(executed.includes('echo rollback1'));
+  const s1 = r.results.find((x) => x.id === 's1');
+  assert.strictEqual(s1.compensated, true);
+});
+
 test('dryRun nie wykonuje ani nie żurnaluje', async () => {
   const { m, journal, executed } = setup();
   const steps = [{ id: 's1', type: 'command', command: 'echo a', os: 'linux' }];

@@ -27,6 +27,8 @@ const STATUSES = [
   'error',
   'skipped',
   'needs_verification',
+  'verify_failed',
+  'compensated',
 ];
 
 // ---------------------------------------------------------------------------

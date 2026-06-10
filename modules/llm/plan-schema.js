@@ -74,6 +74,13 @@ function normalizeStep(raw, index) {
   // type === 'command'
   step.command = typeof raw.command === 'string' ? raw.command.trim() : '';
   if (!step.command) return null;
+  // Opcjonalne: weryfikacja po wykonaniu i kompensacja (rollback) — polecenia.
+  if (typeof raw.verify === 'string' && raw.verify.trim()) {
+    step.verify = raw.verify.trim();
+  }
+  if (typeof raw.compensation === 'string' && raw.compensation.trim()) {
+    step.compensation = raw.compensation.trim();
+  }
   return step;
 }
 
@@ -131,6 +138,8 @@ function computePlanHash(steps) {
       serviceName: s.serviceName || null,
       action: s.action || null,
       packageName: s.packageName || null,
+      verify: s.verify || null,
+      compensation: s.compensation || null,
     }))
   );
   return crypto.createHash('sha256').update(canonical).digest('hex');

@@ -47,6 +47,12 @@ class Orchestrator {
    *  - dryRun?: boolean
    *  - stopOnError?: boolean (default true)
    *  - os?: string
+   *  - verifier?: async (step, result) => { ok:boolean, detail?:string }
+   *      weryfikacja po wykonaniu (postcondition) — wołana dla kroków z `verify`
+   *  - compensator?: async (step) => void
+   *      kompensacja/rollback kroku — używana w trybie saga
+   *  - saga?: boolean  (przy błędzie/nieudanej weryfikacji wycofuje już wykonane
+   *      kroki w odwrotnej kolejności przez compensator)
    * @returns {Promise<{status:string, results:Array}>}
    */
   async execute(plan, options = {}) {
@@ -57,6 +63,9 @@ class Orchestrator {
       dryRun = false,
       stopOnError = true,
       os = undefined,
+      verifier = null,
+      compensator = null,
+      saga = false,
     } = options;
 
     if (typeof executor !== 'function' && !dryRun) {
@@ -66,7 +75,10 @@ class Orchestrator {
     const approvedSet = approvals instanceof Set ? approvals : new Set(approvals || []);
     const steps = (plan && plan.steps) || [];
     const results = [];
+    // Kroki wykonane pomyślnie (kandydaci do kompensacji w trybie saga).
+    const succeeded = [];
     let halted = false;
+    let failure = false;
 
     for (const step of steps) {
       if (halted) {
@@ -81,6 +93,7 @@ class Orchestrator {
       // 1. Blokada (critical) — nigdy nie wykonujemy.
       if (!guard.allowed) {
         results.push(this._mk(step, 'blocked', { guard }));
+        failure = true;
         if (stopOnError) halted = true;
         continue;
       }
@@ -102,9 +115,27 @@ class Orchestrator {
       // 4. Wykonanie
       try {
         const result = await executor(step);
-        results.push(this._mk(step, 'success', { guard, result }));
+        const entry = this._mk(step, 'success', { guard, result });
+
+        // 5. Weryfikacja po wykonaniu (postcondition).
+        if (verifier && step.verify) {
+          const v = await verifier(step, result);
+          if (!v || !v.ok) {
+            entry.status = 'verify_failed';
+            entry.error = (v && v.detail) || 'weryfikacja po wykonaniu nieudana';
+          }
+        }
+
+        results.push(entry);
+        if (entry.status === 'success') {
+          succeeded.push({ step, entry });
+        } else {
+          failure = true;
+          if (stopOnError) halted = true;
+        }
       } catch (error) {
         results.push(this._mk(step, 'error', { guard, error: error.message }));
+        failure = true;
         if (this.logger) {
           this.logger.error('Orchestrator: błąd kroku', error, { stepId: step.id });
         }
@@ -112,7 +143,26 @@ class Orchestrator {
       }
     }
 
-    const status = this._aggregateStatus(results, dryRun);
+    // 6. Saga: przy niepowodzeniu wycofaj wykonane kroki w odwrotnej kolejności.
+    let compensated = 0;
+    if (saga && failure && compensator && succeeded.length) {
+      for (let i = succeeded.length - 1; i >= 0; i--) {
+        const { step, entry } = succeeded[i];
+        if (!step.compensation) continue;
+        try {
+          await compensator(step);
+          entry.compensated = true;
+          compensated++;
+        } catch (err) {
+          entry.compensationError = err.message;
+          if (this.logger) {
+            this.logger.error('Orchestrator: błąd kompensacji', err, { stepId: step.id });
+          }
+        }
+      }
+    }
+
+    const status = this._aggregateStatus(results, dryRun, compensated);
     return { status, results };
   }
 
@@ -132,10 +182,12 @@ class Orchestrator {
     };
   }
 
-  _aggregateStatus(results, dryRun) {
+  _aggregateStatus(results, dryRun, compensated = 0) {
     if (dryRun) return 'dry_run';
+    if (compensated > 0) return 'rolled_back';
     if (results.some((r) => r.status === 'blocked')) return 'blocked';
     if (results.some((r) => r.status === 'needs_approval')) return 'needs_approval';
+    if (results.some((r) => r.status === 'verify_failed')) return 'verify_failed';
     if (results.some((r) => r.status === 'error')) return 'partial_error';
     if (results.length === 0) return 'empty';
     return 'executed';

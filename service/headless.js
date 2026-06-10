@@ -11,10 +11,39 @@
  * Konfiguracja:  AI_ADMIN_SERVICE_PORT (domyślnie 7733), AI_ADMIN_SERVICE_HOST
  *                (domyślnie 127.0.0.1 — tylko pętla lokalna).
  *
- * UWAGA: pełny, uwierzytelniony transport poleceń (RBAC po sesji) to osobny,
- * świadomie wydzielony etap. Tu udostępniamy wyłącznie health/status (read-only,
- * tylko localhost), by nie otwierać niedopracowanej powierzchni ataku.
+ * Endpointy (tylko localhost):
+ *  - GET  /health, /status            — status (read-only),
+ *  - POST /rpc { channel, payload }    — uwierzytelniony dyspozytor poleceń;
+ *      token sesji w nagłówku 'x-session-token' lub w payload.sessionToken.
+ *      Sesję uzyskuje się przez kanał publiczny 'auth:login'. RBAC egzekwowany
+ *      w AppService.dispatch.
  */
+
+const MAX_BODY = 1 << 20; // 1 MiB
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        reject(new Error('Body too large'));
+        req.destroy();
+        return;
+      }
+      data += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(data ? JSON.parse(data) : {});
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 const http = require('http');
 const AppService = require('../modules/service/app-service');
@@ -26,23 +55,44 @@ async function main() {
   const service = new AppService();
   await service.start();
 
-  const server = http.createServer((req, res) => {
-    // Tylko lokalne, read-only endpointy.
+  const sendJson = (res, code, obj) => {
+    res.writeHead(code, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(obj));
+  };
+
+  const server = http.createServer(async (req, res) => {
+    // Health/status (read-only).
     if (req.method === 'GET' && (req.url === '/health' || req.url === '/status')) {
-      const body = {
+      return sendJson(res, 200, {
         ok: true,
         startedAt: new Date().toISOString(),
         llm: service.llmManager ? service.llmManager.getLLMStatus() : null,
         connections: service.serverManager.getActiveConnections
           ? service.serverManager.getActiveConnections()
           : [],
-      };
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(body));
-      return;
+      });
     }
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+
+    // Uwierzytelniony dyspozytor poleceń.
+    if (req.method === 'POST' && req.url === '/rpc') {
+      try {
+        const body = await readJsonBody(req);
+        const channel = body.channel;
+        if (!channel || typeof channel !== 'string') {
+          return sendJson(res, 400, { ok: false, error: { code: 'BAD_REQUEST', message: 'brak channel' } });
+        }
+        const payload = { ...(body.payload || {}) };
+        // Token z nagłówka ma pierwszeństwo (nie ląduje w body logów aplikacji UI).
+        const headerToken = req.headers['x-session-token'];
+        if (headerToken) payload.sessionToken = headerToken;
+        const result = await service.dispatch(channel, payload);
+        return sendJson(res, result.ok ? 200 : 400, result);
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: { code: 'BAD_REQUEST', message: e.message } });
+      }
+    }
+
+    return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
   });
 
   server.listen(PORT, HOST, () => {

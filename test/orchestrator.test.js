@@ -93,6 +93,53 @@ test('computePlanHash jest stabilny i czuły na zmianę polecenia (anty-TOCTOU)'
   assert.notStrictEqual(computePlanHash(a), computePlanHash(c));
 });
 
+test('verify: nieudana weryfikacja po wykonaniu -> verify_failed', async () => {
+  const o = new Orchestrator();
+  const plan = { steps: [{ id: 's1', type: 'command', command: 'echo a', verify: 'test -f /x' }] };
+  const res = await o.execute(plan, {
+    executor: async () => ({ code: 0 }),
+    verifier: async () => ({ ok: false, detail: 'brak pliku' }),
+  });
+  assert.strictEqual(res.results[0].status, 'verify_failed');
+  assert.strictEqual(res.status, 'verify_failed');
+});
+
+test('saga: błąd kroku kompensuje wcześniejsze w odwrotnej kolejności', async () => {
+  const o = new Orchestrator();
+  const plan = {
+    steps: [
+      { id: 's1', type: 'command', command: 'echo a', compensation: 'undo a' },
+      { id: 's2', type: 'command', command: 'echo b', compensation: 'undo b' },
+      { id: 's3', type: 'command', command: 'echo c' },
+    ],
+  };
+  const compensated = [];
+  const res = await o.execute(plan, {
+    saga: true,
+    stopOnError: true,
+    executor: async (s) => { if (s.id === 's3') throw new Error('boom'); return { code: 0 }; },
+    compensator: async (s) => { compensated.push(s.id); },
+  });
+  // s1,s2 wykonane; s3 błąd -> kompensacja s2 potem s1 (odwrotna kolejność)
+  assert.deepStrictEqual(compensated, ['s2', 's1']);
+  assert.strictEqual(res.status, 'rolled_back');
+  assert.strictEqual(res.results.find((r) => r.id === 's1').compensated, true);
+  assert.strictEqual(res.results.find((r) => r.id === 's2').compensated, true);
+});
+
+test('saga: bez błędów nie kompensuje', async () => {
+  const o = new Orchestrator();
+  const plan = { steps: [{ id: 's1', type: 'command', command: 'echo a', compensation: 'undo a' }] };
+  const compensated = [];
+  const res = await o.execute(plan, {
+    saga: true,
+    executor: async () => ({ code: 0 }),
+    compensator: async (s) => { compensated.push(s.id); },
+  });
+  assert.strictEqual(res.status, 'executed');
+  assert.deepStrictEqual(compensated, []);
+});
+
 test('execute: zgoda per-krok (approvals) odblokowuje tylko wskazany krok high', async () => {
   const o = new Orchestrator();
   const plan = {
