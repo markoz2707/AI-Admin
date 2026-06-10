@@ -6,6 +6,7 @@ wykonywania zadań administracyjnych, wbudowanym **managerem haseł**, kontrolą
 dostępu **RBAC** oraz **audytem** operacji.
 
 > Projekt architektoniczny i decyzje technologiczne opisuje [`plan.md`](./plan.md).
+> Kierunek rozwoju w stronę autonomicznej administracji: [`docs/AUTONOMY.md`](./docs/AUTONOMY.md).
 
 ## Funkcje
 
