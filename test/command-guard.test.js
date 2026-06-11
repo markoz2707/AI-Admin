@@ -70,6 +70,28 @@ test('puste polecenie jest niedozwolone', () => {
   assert.strictEqual(evaluateCommand('   ').allowed, false);
 });
 
+test('self-lockout: odcięcie własnej ścieżki zarządzania -> high (APPROVAL)', () => {
+  for (const cmd of [
+    'sudo systemctl stop sshd',
+    'ip link set eth0 down',
+    'sudo ufw default deny',
+    'sudo iptables -P INPUT DROP',
+    'Stop-Service sshd',
+    'sudo ip route del default',
+    'sudo ufw deny 22',
+  ]) {
+    const r = evaluateCommand(cmd);
+    assert.strictEqual(r.risk, 'high', `${cmd} powinno być high`);
+    assert.strictEqual(r.allowed, true);
+    assert.ok(r.violations.some((v) => v.selfLockout), `${cmd} powinno mieć flagę selfLockout`);
+  }
+});
+
+test('self-lockout: zwykłe polecenia nie są flagowane', () => {
+  const r = evaluateCommand('systemctl restart nginx');
+  assert.ok(!r.violations.some((v) => v.selfLockout));
+});
+
 test('evaluatePlan agreguje ryzyko i flagi', () => {
   const plan = evaluatePlan([
     { command: 'uname -a' },

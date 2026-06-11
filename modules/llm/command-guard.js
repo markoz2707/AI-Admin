@@ -66,6 +66,23 @@ const HIGH_PATTERNS = [
   { re: /\bpasswd\b/, reason: 'zmiana hasła systemowego' },
 ];
 
+// Self-lockout — polecenia mogące odciąć własną ścieżkę zarządzania (SSH/WinRM/
+// sieć/firewall). Klasyfikowane jako 'high' (APPROVAL): nigdy autonomicznie.
+const SELF_LOCKOUT_PATTERNS = [
+  { re: /\bsystemctl\s+(stop|disable|mask)\s+(ssh|sshd)\b/, reason: 'zatrzymanie SSH (self-lockout)' },
+  { re: /\bservice\s+(ssh|sshd)\s+(stop|restart)\b/, reason: 'zatrzymanie SSH (self-lockout)' },
+  { re: /\bStop-Service\b[^\n]*\b(sshd|winrm)\b/i, reason: 'zatrzymanie SSH/WinRM (self-lockout)' },
+  { re: /\b(Disable-PSRemoting)\b/i, reason: 'wyłączenie WinRM (self-lockout)' },
+  { re: /\bip\s+link\s+set\b[^\n]*\bdown\b/, reason: 'wyłączenie interfejsu sieciowego (self-lockout)' },
+  { re: /\bifconfig\s+\S+\s+down\b/, reason: 'wyłączenie interfejsu sieciowego (self-lockout)' },
+  { re: /\bnmcli\b[^\n]*\b(networking\s+off|con(nection)?\s+down)\b/i, reason: 'wyłączenie sieci (self-lockout)' },
+  { re: /\bip\s+route\s+del(ete)?\s+default\b/, reason: 'usunięcie domyślnej trasy (self-lockout)' },
+  { re: /\bufw\s+default\s+deny\b/i, reason: 'firewall: domyślna blokada (self-lockout)' },
+  { re: /\bufw\s+(deny|reject)\s+(22|ssh|3389|5985|5986)\b/i, reason: 'firewall: blokada portu zarządzania (self-lockout)' },
+  { re: /\biptables\s+-P\s+INPUT\s+DROP\b/, reason: 'firewall: domyślna polityka DROP (self-lockout)' },
+  { re: /\biptables\b[^\n]*--dport\s+(22|3389|5985|5986)\b[^\n]*\b(DROP|REJECT)\b/, reason: 'firewall: blokada portu zarządzania (self-lockout)' },
+];
+
 // Wzorce średniego ryzyka — zmiany stanu, ale typowe i odwracalne.
 const MEDIUM_PATTERNS = [
   { re: /\b(apt-get|apt|yum|dnf|zypper|choco|winget)\s+(install|remove|update|upgrade)\b/i, reason: 'operacja na pakietach' },
@@ -108,6 +125,12 @@ function evaluateCommand(command, opts = {}) {
   for (const { re, reason } of HIGH_PATTERNS) {
     if (re.test(cmd)) {
       violations.push({ reason, severity: 'high' });
+      risk = maxSeverity(risk, 'high');
+    }
+  }
+  for (const { re, reason } of SELF_LOCKOUT_PATTERNS) {
+    if (re.test(cmd)) {
+      violations.push({ reason, severity: 'high', selfLockout: true });
       risk = maxSeverity(risk, 'high');
     }
   }

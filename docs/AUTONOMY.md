@@ -268,6 +268,11 @@ zmienia kolejność roadmapy.
   prompt jako jawne DANE (nie polecenia). Wpięte w `task-generator` (host/nazwy
   aplikacji) oraz `environment-collector` (flaguje `perceptionWarnings` do
   eskalacji w pętli autonomicznej).
+- **Wykrywanie self-lockout (guardrail).** Polecenia mogące odciąć własną ścieżkę
+  zarządzania (zatrzymanie SSH/WinRM, wyłączenie głównego NIC, firewall blokujący
+  port zarządzania, usunięcie domyślnej trasy) są klasyfikowane jako `high`
+  (APPROVAL) z flagą `selfLockout` — nigdy autonomicznie. (MVP oparty na wzorcach;
+  pełny, tranzytywny model „ścieżki zarządzania" pozostaje rozwinięciem.)
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
@@ -282,10 +287,10 @@ zmienia kolejność roadmapy.
    prekondycje ewaluowane na świeżej migawce w momencie wykonania.
 4. **Aprobata pinuje też hash prekondycji stanu**, nie tylko czas — jeśli stan
    się zmienił między zatwierdzeniem a wykonaniem, aprobata wygasa.
-5. **Self-lockout detection** — model „ścieżki zarządzania" (NIC/route/jumphost/
-   DNS, także tranzytywnie); blokada akcji odcinającej własny dostęp bez APPROVAL.
-6. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
+5. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
    powoduje approval fatigue dla rutynowych instalacji.
+6. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
+   MVP oparty na wzorcach.
 7. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
    APPROVAL) — „wykonam za T, chyba że zawetujesz".
 
