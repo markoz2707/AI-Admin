@@ -294,28 +294,33 @@ zmienia kolejność roadmapy.
   (`scheduleDeferredExecution`/`vetoDeferredExecution`/`listDeferredExecutions`)
   i w transporcie (`llm:scheduleDeferred`/`vetoDeferred`/`listDeferred`; weto
   dostępne także dla readonly — zatrzymanie jest bezpieczne).
+- **Silnik autorytetu (`modules/policy/authority-engine.js`).** Deterministyczna
+  decyzja `AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN` z guardraila + metadanych typed
+  actions + środowiska + polityki admina (`environmentBump`, `categoryMin`,
+  `minAuthority`, `autonomyEnabled`). `buildPlan` przypisuje autorytet per krok i
+  `maxAuthority` do planu. To realizuje wprost regułę „pytaj admina tylko o
+  destrukcyjne/niebezpieczne, resztę rób sam".
+- **Reklasyfikacja `sudo`.** Gdy jedynym powodem oceny `high` jest podniesienie
+  uprawnień w ramach typed action, autorytet liczony jest z metadanych (rutynowa,
+  odwracalna instalacja w dev → NOTIFY, nie APPROVAL) — koniec approval fatigue.
+  Realne sygnały (userdel, rm -r, self-lockout, zapis do /etc) nadal → APPROVAL.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
-   postconditions dla zmian wielohostowych (typed actions dają już domyślne
-   `verify`; brakuje warstwy czasowej/wielohostowej). Powiązać `target` z
-   inwentarzem migawki (po UUID/serialu) i ewaluować prekondycje na świeżej
-   migawce w momencie wykonania.
-3. **Reklasyfikacja `sudo`** w oparciu o metadane typed actions — dziś `sudo`=high
-   powoduje approval fatigue dla rutynowych instalacji (silnik autorytetu powinien
-   liczyć ryzyko z metadanych akcji, nie z obecności `sudo`).
-4. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
-   MVP oparty na wzorcach.
-5. **Silnik autorytetu (§4–§5)** — spięcie metadanych typed actions + polityki
-   admina w decyzję AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN. Wszystkie potrzebne
-   wejścia już istnieją (metadane ryzyka, guardrail, deferred-with-veto, approvals
-   per-krok); brakuje deklaratywnej polityki i samego silnika.
-6. **Pełna pętla agenta (§6)** — perceive→reason→plan→gate→execute→verify→
-   rollback jako ciągłe utrzymanie (drift) ponad obecne wywołania na żądanie.
+2. **Spięcie autorytetu z wykonaniem (pętla agenta, §6)** — `executePlan` powinno
+   automatycznie wykonywać kroki AUTONOMOUS, zlecać NOTIFY jako deferred-with-veto,
+   a APPROVAL/FORBIDDEN wstrzymywać; całość jako ciągłe utrzymanie (perceive→
+   reason→plan→gate→execute→verify→rollback, w tym remediacja dryfu).
+3. **Deklaratywna polityka autorytetu z ustawień** (per środowisko/kategoria/okno
+   czasowe) — silnik już ją przyjmuje; brakuje UI/persystencji i edycji przez admina.
+4. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
+   postconditions wielohostowe; powiązać `target` z inwentarzem migawki (UUID/serial).
+5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny MVP.
+6. **Pełna migracja UI na `AppService.dispatch`** (wymaga uruchomienia Electrona
+   do weryfikacji) oraz journal jako jedyne źródło prawdy o stanie planów.
 
 ### Decyzje technologiczne (zrewidowane)
 

@@ -33,6 +33,22 @@ test('typedOnly odrzuca surowe polecenia (zostają tylko typed actions)', async 
   assert.ok(plan.steps.every((s) => s.type.startsWith('service.') || s.type.startsWith('package.')));
 });
 
+test('buildPlan przypisuje autorytet per krok i maxAuthority', async () => {
+  const m = setup([{ type: 'installation', app: 'nginx' }]);
+  // dev -> instalacja pakietu (reversible) powinna być AUTONOMOUS
+  m.getServerConfig = async () => ({ id: 1, os: 'linux', environment: 'dev' });
+  const plan = await m.buildPlan('zainstaluj', 1);
+  assert.ok(['AUTONOMOUS', 'NOTIFY'].includes(plan.steps[0].authority));
+  assert.ok(plan.maxAuthority);
+
+  // prod podnosi poziom
+  const m2 = setup([{ type: 'installation', app: 'nginx' }]);
+  m2.getServerConfig = async () => ({ id: 1, os: 'linux', environment: 'prod' });
+  const plan2 = await m2.buildPlan('zainstaluj', 1);
+  const order = ['AUTONOMOUS', 'NOTIFY', 'APPROVAL', 'FORBIDDEN'];
+  assert.ok(order.indexOf(plan2.steps[0].authority) >= order.indexOf(plan.steps[0].authority));
+});
+
 test('bez typedOnly surowe polecenie pozostaje w planie', async () => {
   const m = setup([{ type: 'command', command: 'uname -a' }]);
   const plan = await m.buildPlan('zrób', 1);

@@ -23,6 +23,7 @@ const Orchestrator = require('./orchestrator');
 const { evaluateCommand } = require('./command-guard');
 const { planFromTasks, computePlanHash } = require('./plan-schema');
 const actionRegistry = require('../actions/action-registry');
+const authorityEngine = require('../policy/authority-engine');
 const DeferredScheduler = require('../agent/deferred-scheduler');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
@@ -342,6 +343,14 @@ class LLMManager {
     }
 
     const guarded = this.orchestrator.buildPlan({ summary: plan, steps: resolved });
+
+    // Decyzja autorytetu per krok (AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN) na
+    // podstawie guardraila + metadanych typed actions + środowiska + polityki.
+    const authorityCtx = { environment: serverConfig.environment };
+    const decided = authorityEngine.evaluatePlan(guarded.steps, authorityCtx, options.policy || {});
+    guarded.steps = decided.steps;
+    const maxAuthority = decided.maxAuthority;
+
     const planHash = computePlanHash(guarded.steps);
     const planId = 'plan_' + Math.random().toString(36).slice(2, 10);
 
@@ -364,6 +373,7 @@ class LLMManager {
     return {
       planId, planHash, preconditionHash, summary: plan, steps: guarded.steps,
       maxRisk: guarded.maxRisk,
+      maxAuthority,
       requiresApproval: guarded.requiresApproval,
       hasBlocked: guarded.hasBlocked,
       rejectedRaw,
