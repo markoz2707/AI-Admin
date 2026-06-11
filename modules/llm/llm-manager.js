@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const Orchestrator = require('./orchestrator');
 const { evaluateCommand } = require('./command-guard');
 const { planFromTasks, computePlanHash } = require('./plan-schema');
+const actionRegistry = require('../actions/action-registry');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
@@ -281,13 +282,33 @@ class LLMManager {
     const os = (serverConfig.os || 'linux').toLowerCase();
 
     // Rozstrzygnij każdy krok do konkretnego polecenia (to, co realnie zostanie
-    // wykonane), aby podgląd, hash i wykonanie były identyczne.
-    const resolved = planFromTasks(tasks, plan)
-      .steps.map((s, i) => {
-        const command = this._resolveStepCommand(s, os);
-        return { ...s, id: s.id || `step_${i + 1}`, os, command: command || undefined };
-      })
-      .filter((s) => s.type === 'noop' || s.command);
+    // wykonane), aby podgląd, hash i wykonanie były identyczne. Typed actions
+    // (usługa/pakiet) zyskują automatycznie verify + compensation + metadane.
+    const typedOnly = !!options.typedOnly;
+    const resolved = [];
+    let rejectedRaw = 0;
+    planFromTasks(tasks, plan).steps.forEach((s, i) => {
+      const id = s.id || `step_${i + 1}`;
+      const r = actionRegistry.resolve({ ...s, id }, os);
+      if (r.typed) {
+        resolved.push({ ...r.step, id });
+        return;
+      }
+      // Surowe polecenie — w trybie autonomicznym (typedOnly) niedozwolone.
+      if (typedOnly) {
+        rejectedRaw++;
+        return;
+      }
+      const command = this._resolveStepCommand(s, os);
+      if (s.type === 'noop' || command) {
+        resolved.push({ ...s, id, os, command: command || undefined });
+      }
+    });
+    if (typedOnly && rejectedRaw > 0) {
+      this.logger.warn(
+        `Tryb typedOnly: odrzucono ${rejectedRaw} kroków bez typed-action (surowe polecenia).`
+      );
+    }
 
     const guarded = this.orchestrator.buildPlan({ summary: plan, steps: resolved });
     const planHash = computePlanHash(guarded.steps);
@@ -314,6 +335,7 @@ class LLMManager {
       maxRisk: guarded.maxRisk,
       requiresApproval: guarded.requiresApproval,
       hasBlocked: guarded.hasBlocked,
+      rejectedRaw,
     };
   }
 

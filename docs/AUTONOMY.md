@@ -278,23 +278,32 @@ zmienia kolejność roadmapy.
   (`PLAN_STATE_CHANGED`), gdy stan zmienił się od zatwierdzenia — aprobata wygasa
   nie tylko po czasie, ale i po zmianie stanu. Provider odcisku jest wstrzykiwalny
   (domyślnie lekki fingerprint OS/hostname; mechanizm domyślnie wyłączony).
+- **Typed actions (`modules/actions/action-registry.js`).** Deklaratywne akcje
+  (`package.install`/`package.remove`/`service.start|stop|restart`, cross-OS) z
+  metadanymi ryzyka (reversibility/blastRadius/dataLossRisk/requiresSnapshot) oraz
+  **domyślnym `verify` i `compensation`**. `buildPlan` wzbogaca kroki przez
+  rejestr (także mapując starsze typy `installation`/`service`), więc plany
+  usług/pakietów automatycznie mają postcondition i rollback (saga + read-back).
+  Opcja `typedOnly` wymusza wyłącznie typed actions (zakaz surowych poleceń) —
+  fundament trybu autonomicznego. Ryzyko liczone z metadanych akcji, nie ze
+  stringa.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **`verify` jako obowiązkowy element kontraktu capability** (timeouty,
-   wykrywanie flappingu, postconditions dla zmian wielohostowych) — dziś `verify`
-   jest opcjonalne i wypełniane ręcznie/przez typed actions.
-3. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
-   `type:'command'`; `target` wiązany z inwentarzem migawki (po UUID/serialu),
-   prekondycje ewaluowane na świeżej migawce w momencie wykonania.
-4. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
-   powoduje approval fatigue dla rutynowych instalacji.
-5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
+2. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
+   postconditions dla zmian wielohostowych (typed actions dają już domyślne
+   `verify`; brakuje warstwy czasowej/wielohostowej). Powiązać `target` z
+   inwentarzem migawki (po UUID/serialu) i ewaluować prekondycje na świeżej
+   migawce w momencie wykonania.
+3. **Reklasyfikacja `sudo`** w oparciu o metadane typed actions — dziś `sudo`=high
+   powoduje approval fatigue dla rutynowych instalacji (silnik autorytetu powinien
+   liczyć ryzyko z metadanych akcji, nie z obecności `sudo`).
+4. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
    MVP oparty na wzorcach.
-6. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
+5. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
    APPROVAL) — „wykonam za T, chyba że zawetujesz".
 
 ### Decyzje technologiczne (zrewidowane)
