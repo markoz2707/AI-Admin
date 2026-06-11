@@ -304,18 +304,25 @@ zmienia kolejność roadmapy.
   uprawnień w ramach typed action, autorytet liczony jest z metadanych (rutynowa,
   odwracalna instalacja w dev → NOTIFY, nie APPROVAL) — koniec approval fatigue.
   Realne sygnały (userdel, rm -r, self-lockout, zapis do /etc) nadal → APPROVAL.
+- **Spięcie autorytetu z wykonaniem (`LLMManager.executeAutonomously`).** Autorytet
+  jest źródłem auto-zgody: kroki AUTONOMOUS/NOTIFY wykonują się samodzielnie,
+  APPROVAL czekają na administratora, FORBIDDEN/critical są blokowane. W prod próg
+  rośnie (np. instalacja NOTIFY→APPROVAL). Plany z krokami oczekującymi na zgodę
+  nie są usuwane z magazynu (można je dokończyć po zatwierdzeniu). To realizuje
+  end-to-end regułę „rób sam, pytaj tylko o destrukcyjne/niebezpieczne".
+  Transport: `llm:executeAutonomously`.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Spięcie autorytetu z wykonaniem (pętla agenta, §6)** — `executePlan` powinno
-   automatycznie wykonywać kroki AUTONOMOUS, zlecać NOTIFY jako deferred-with-veto,
-   a APPROVAL/FORBIDDEN wstrzymywać; całość jako ciągłe utrzymanie (perceive→
-   reason→plan→gate→execute→verify→rollback, w tym remediacja dryfu).
+2. **Ciągła pętla agenta (§6)** — okresowy perceive→reason→plan→gate→execute→
+   verify→rollback z remediacją dryfu (dziś autonomia działa na żądanie przez
+   `executeAutonomously`, nie w pętli). Opcjonalnie spinanie NOTIFY z
+   deferred-with-veto (okno na weto przed wykonaniem).
 3. **Deklaratywna polityka autorytetu z ustawień** (per środowisko/kategoria/okno
-   czasowe) — silnik już ją przyjmuje; brakuje UI/persystencji i edycji przez admina.
+   czasowe) — silnik już ją przyjmuje; brakuje persystencji i edycji przez admina.
 4. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
    postconditions wielohostowe; powiązać `target` z inwentarzem migawki (UUID/serial).
 5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny MVP.

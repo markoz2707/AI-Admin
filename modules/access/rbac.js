@@ -68,6 +68,7 @@ const PERMISSIONS = {
   // LLM
   'llm:ask': [ROLES.ADMIN, ROLES.OPERATOR], // autoExecute ograniczymy dodatkowo w logice
   'llm:executePlan': [ROLES.ADMIN, ROLES.OPERATOR], // zatwierdzanie kroków high tylko admin (w logice)
+  'llm:executeAutonomously': [ROLES.ADMIN, ROLES.OPERATOR],
   'llm:scheduleDeferred': [ROLES.ADMIN, ROLES.OPERATOR],
   'llm:vetoDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY], // weto (zatrzymanie) bezpieczne dla każdego
   'llm:listDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],

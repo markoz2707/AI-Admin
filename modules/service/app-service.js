@@ -283,6 +283,11 @@ class AppService {
         });
       },
 
+      'llm:executeAutonomously': async ({ serverId, planId, planHash, dryRun }, context) =>
+        this.llmManager.executeAutonomously(serverId, planId, {
+          planHash, dryRun: !!dryRun, appUserId: context.user ? context.user.id : null,
+        }),
+
       'llm:scheduleDeferred': async ({ serverId, planId, planHash, approvals, delayMs }, context) => {
         const isAdmin = context.user && context.user.role === ROLES.ADMIN;
         return this.llmManager.scheduleDeferredExecution(serverId, planId, {

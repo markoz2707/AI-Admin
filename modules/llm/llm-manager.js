@@ -263,6 +263,50 @@ class LLMManager {
  }
 
  /**
+  * Wykonuje plan AUTONOMICZNIE wg decyzji silnika autorytetu: kroki AUTONOMOUS
+  * i NOTIFY wykonują się samodzielnie (auto-zatwierdzone), APPROVAL czekają na
+  * administratora, a FORBIDDEN/critical są blokowane. Realizuje regułę „rób sam,
+  * pytaj tylko o destrukcyjne/niebezpieczne".
+  * @param {number|string} serverId
+  * @param {string} planId
+  * @param {Object} options – { planHash, dryRun, stopOnError, appUserId, preconditionProvider }
+  * @returns {Promise<{planId, status, results, autonomy:{autoApproved,notify,pendingApproval}}>}
+  */
+ async executeAutonomously(serverId, planId, options = {}) {
+   const stored = this._planStore.get(planId);
+   if (!stored) { const e = new Error('Plan nie istnieje lub wygasł'); e.code = 'PLAN_NOT_FOUND'; throw e; }
+
+   const autoApproved = [];
+   const notify = [];
+   const pendingApproval = [];
+   for (const s of stored.steps) {
+     const a = s.authority || 'APPROVAL';
+     if (a === 'AUTONOMOUS' || a === 'NOTIFY') autoApproved.push(s.id);
+     if (a === 'NOTIFY') notify.push(s.id);
+     if (a === 'APPROVAL') pendingApproval.push(s.id);
+   }
+
+   const result = await this.executePlan(serverId, planId, {
+     planHash: options.planHash || stored.planHash,
+     approvals: autoApproved, // autorytet jest źródłem auto-zgody (nie guard.sudo)
+     dryRun: options.dryRun,
+     stopOnError: options.stopOnError !== false,
+     appUserId: options.appUserId,
+     preconditionProvider: options.preconditionProvider,
+   });
+
+   if (notify.length) {
+     await this.logger.logAuditLike({
+       actionType: 'LLM_AUTONOMOUS_NOTIFY',
+       targetType: 'server', targetId: serverId, source: 'system', success: true,
+       details: { planId, notify },
+     });
+   }
+
+   return { ...result, autonomy: { autoApproved, notify, pendingApproval } };
+ }
+
+ /**
   * Planuje ODROCZONE wykonanie planu z prawem weta: po `delayMs` plan zostanie
   * wykonany (executePlan), o ile nie zostanie wcześniej zawetowany.
   * @returns {{deferredId, fireAt, status}}
@@ -366,7 +410,7 @@ class LLMManager {
     }
 
     this._planStore.set(planId, {
-      planId, serverId, os, prompt, summary: plan,
+      planId, serverId, os, environment: serverConfig.environment, prompt, summary: plan,
       steps: guarded.steps, planHash, preconditionHash, createdAt: new Date().toISOString(),
     });
 
@@ -558,8 +602,10 @@ class LLMManager {
     });
     this.logger.logAction('LLM_PLAN_EXECUTED', { serverId, planId, status, approvals: approvals.length });
 
-    // Plan jednorazowy — po realnym wykonaniu usuwamy z magazynu.
-    if (!options.dryRun) this._planStore.delete(planId);
+    // Usuwamy plan z magazynu tylko, gdy nie ma kroków oczekujących na zgodę
+    // (inaczej zachowujemy go, by można było dokończyć po zatwierdzeniu).
+    const hasPending = results.some((r) => r.status === 'needs_approval');
+    if (!options.dryRun && !hasPending) this._planStore.delete(planId);
     return { planId, planHash: stored.planHash, status, results };
   }
 
