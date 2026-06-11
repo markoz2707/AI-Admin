@@ -287,6 +287,13 @@ zmienia kolejność roadmapy.
   Opcja `typedOnly` wymusza wyłącznie typed actions (zakaz surowych poleceń) —
   fundament trybu autonomicznego. Ryzyko liczone z metadanych akcji, nie ze
   stringa.
+- **Odroczone wykonanie z prawem weta (`modules/agent/deferred-scheduler.js`).**
+  Pośredni poziom autonomii między NOTIFY a APPROVAL: agent zapowiada wykonanie
+  planu za czas T, a administrator może je w tym oknie zawetować; bez weta plan
+  wykonuje się sam (`executePlan`). API w `LLMManager`
+  (`scheduleDeferredExecution`/`vetoDeferredExecution`/`listDeferredExecutions`)
+  i w transporcie (`llm:scheduleDeferred`/`vetoDeferred`/`listDeferred`; weto
+  dostępne także dla readonly — zatrzymanie jest bezpieczne).
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
@@ -303,8 +310,12 @@ zmienia kolejność roadmapy.
    liczyć ryzyko z metadanych akcji, nie z obecności `sudo`).
 4. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
    MVP oparty na wzorcach.
-5. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
-   APPROVAL) — „wykonam za T, chyba że zawetujesz".
+5. **Silnik autorytetu (§4–§5)** — spięcie metadanych typed actions + polityki
+   admina w decyzję AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN. Wszystkie potrzebne
+   wejścia już istnieją (metadane ryzyka, guardrail, deferred-with-veto, approvals
+   per-krok); brakuje deklaratywnej polityki i samego silnika.
+6. **Pełna pętla agenta (§6)** — perceive→reason→plan→gate→execute→verify→
+   rollback jako ciągłe utrzymanie (drift) ponad obecne wywołania na żądanie.
 
 ### Decyzje technologiczne (zrewidowane)
 

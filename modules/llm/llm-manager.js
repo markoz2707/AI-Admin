@@ -23,6 +23,7 @@ const Orchestrator = require('./orchestrator');
 const { evaluateCommand } = require('./command-guard');
 const { planFromTasks, computePlanHash } = require('./plan-schema');
 const actionRegistry = require('../actions/action-registry');
+const DeferredScheduler = require('../agent/deferred-scheduler');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
@@ -70,6 +71,12 @@ class LLMManager {
    // Magazyn zbudowanych planów (pin pod zatwierdzanie / ochrona TOCTOU).
    // planId -> { serverId, os, steps, planHash, summary, prompt, createdAt }
    this._planStore = new Map();
+
+   // Scheduler odroczonego wykonania z prawem weta.
+   this._deferred = new DeferredScheduler({
+     logger: this.logger,
+     execute: (item) => this.executePlan(item.serverId, item.planId, item.options || {}),
+   });
 
    // In-memory historia dalej utrzymywana jako cache, ale źródłem prawdy jest DB.
    // Map: serverId -> [{ id, prompt, plan, tasks, executionResults, status, createdAt }]
@@ -252,6 +259,30 @@ class LLMManager {
      }
    }
    return { checked: rows.length, confirmedDone, unresolved };
+ }
+
+ /**
+  * Planuje ODROCZONE wykonanie planu z prawem weta: po `delayMs` plan zostanie
+  * wykonany (executePlan), o ile nie zostanie wcześniej zawetowany.
+  * @returns {{deferredId, fireAt, status}}
+  */
+ scheduleDeferredExecution(serverId, planId, options = {}) {
+   const { delayMs = 0, planHash, approvals, appUserId } = options;
+   return this._deferred.schedule(
+     { serverId, planId, options: { planHash, approvals, appUserId } },
+     delayMs
+   );
+ }
+
+ /** Weto odroczonego wykonania (jeśli jeszcze nie wystartowało). */
+ vetoDeferredExecution(deferredId, reason = null) {
+   const ok = this._deferred.veto(deferredId, reason);
+   return { vetoed: ok, deferredId };
+ }
+
+ /** Lista odroczonych wykonań. */
+ listDeferredExecutions() {
+   return this._deferred.list();
  }
 
   // --- Public API ---

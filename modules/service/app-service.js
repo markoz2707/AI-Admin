@@ -283,6 +283,19 @@ class AppService {
         });
       },
 
+      'llm:scheduleDeferred': async ({ serverId, planId, planHash, approvals, delayMs }, context) => {
+        const isAdmin = context.user && context.user.role === ROLES.ADMIN;
+        return this.llmManager.scheduleDeferredExecution(serverId, planId, {
+          delayMs,
+          planHash,
+          approvals: isAdmin ? approvals || [] : [],
+          appUserId: context.user ? context.user.id : null,
+        });
+      },
+      'llm:vetoDeferred': async ({ deferredId, reason }) =>
+        this.llmManager.vetoDeferredExecution(deferredId, reason || null),
+      'llm:listDeferred': async () => this.llmManager.listDeferredExecutions(),
+
       'env:detectOS': async ({ serverId }, context) => {
         const server = await this.serverManager.getServer(serverId);
         const execute = this._makeServerExecutor(serverId, context);
