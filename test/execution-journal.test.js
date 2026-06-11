@@ -38,6 +38,31 @@ test('completeStep + isStepDone', async () => {
   assert.strictEqual(await j.isStepDone('p1', 's2'), false);
 });
 
+test('startRun zachowuje verify/compensation do read-backu', async () => {
+  const j = newJournal();
+  await j.startRun({
+    planId: 'p1', serverId: 9,
+    steps: [{ id: 's1', command: 'echo a', verify: 'test -f /x', compensation: 'rm /x' }],
+  });
+  const [row] = await j.listNeedsVerification().then(() => j.getRun('p1'));
+  assert.strictEqual(row.verify, 'test -f /x');
+  assert.strictEqual(row.compensation, 'rm /x');
+  assert.strictEqual(row.server_id, 9);
+});
+
+test('listNeedsVerification + markVerifiedDone', async () => {
+  const j = newJournal();
+  await j.startRun({ planId: 'p1', serverId: 1, steps: [{ id: 's1', command: 'c', verify: 'v' }] });
+  await j.beginStep('p1', 's1');
+  await j.recover(); // executing -> needs_verification
+  let nv = await j.listNeedsVerification();
+  assert.strictEqual(nv.length, 1);
+  assert.strictEqual(nv[0].verify, 'v');
+  await j.markVerifiedDone('p1', 's1');
+  assert.strictEqual(await j.isStepDone('p1', 's1'), true);
+  assert.strictEqual((await j.listNeedsVerification()).length, 0);
+});
+
 test('findInterrupted + recover oznacza przerwane jako needs_verification', async () => {
   const j = newJournal();
   await j.startRun({ planId: 'p1', serverId: 1, steps });

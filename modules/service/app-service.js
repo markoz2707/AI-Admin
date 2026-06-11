@@ -108,12 +108,17 @@ class AppService {
       ...routing,
     });
 
-    // Odzyskiwanie po awarii: przerwane kroki -> needs_verification.
+    // Odzyskiwanie po awarii: przerwane kroki -> needs_verification, następnie
+    // read-back (uruchom `verify`, nie powtarzaj operacji).
     try {
       const recovered = await this.llmManager.recoverInterruptedPlans();
       if (recovered.length) {
         this.logger.warn(
-          `Odzyskano ${recovered.length} przerwanych kroków wykonania (wymagają weryfikacji).`
+          `Odzyskano ${recovered.length} przerwanych kroków wykonania — próbuję read-back.`
+        );
+        const rb = await this.llmManager.verifyInterruptedSteps();
+        this.logger.warn(
+          `Read-back: sprawdzono ${rb.checked}, potwierdzono ${rb.confirmedDone}, nierozstrzygnięte ${rb.unresolved}.`
         );
       }
     } catch (e) {

@@ -305,7 +305,9 @@ CREATE TABLE IF NOT EXISTS execution_journal (
     step_id TEXT NOT NULL,
     step_index INTEGER,
     command TEXT,
-    status TEXT NOT NULL DEFAULT 'pending', -- pending/executing/done/error/skipped/needs_verification
+    verify TEXT,
+    compensation TEXT,
+    status TEXT NOT NULL DEFAULT 'pending', -- pending/executing/done/error/skipped/needs_verification/verify_failed/compensated
     attempt INTEGER NOT NULL DEFAULT 0,
     result TEXT,
     error TEXT,

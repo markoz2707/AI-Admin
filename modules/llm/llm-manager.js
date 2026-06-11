@@ -205,6 +205,53 @@ class LLMManager {
    }
  }
 
+ /**
+  * Read-back: dla kroków 'needs_verification' (przerwanych awarią) uruchamia ich
+  * postcondition `verify`, by ustalić, czy faktycznie się wykonały — BEZ ślepego
+  * ponawiania samej operacji. Krok z udaną weryfikacją → 'done'; pozostałe
+  * (brak verify, błąd połączenia, verify != 0) zostają 'needs_verification' do
+  * ręcznej decyzji. Best-effort i bezpieczne (read-only verify).
+  * @returns {Promise<{checked:number, confirmedDone:number, unresolved:number}>}
+  */
+ async verifyInterruptedSteps() {
+   const journal = this._getJournal();
+   let rows = [];
+   try {
+     rows = await journal.listNeedsVerification();
+   } catch (err) {
+     this.logger.error('Nie można odczytać kroków do weryfikacji', err);
+     return { checked: 0, confirmedDone: 0, unresolved: 0 };
+   }
+
+   let confirmedDone = 0;
+   let unresolved = 0;
+   for (const row of rows) {
+     const verify = row.verify;
+     const serverId = row.server_id;
+     // Bez polecenia weryfikującego albo bez serwera — nie ryzykujemy; zostawiamy.
+     if (!verify || serverId == null) {
+       unresolved++;
+       continue;
+     }
+     try {
+       const res = await this._execGuardedRaw(serverId, verify, null, null);
+       if (res && (res.code === 0 || res.code === undefined)) {
+         await this._journalSafe(() => journal.markVerifiedDone(row.plan_id, row.step_id));
+         confirmedDone++;
+       } else {
+         unresolved++;
+       }
+     } catch (err) {
+       // Serwer niedostępny / guard / inny błąd — NIE ponawiamy operacji.
+       this.logger.warn('Read-back nierozstrzygnięty (krok zostaje do weryfikacji)', {
+         planId: row.plan_id, stepId: row.step_id, reason: err.message,
+       });
+       unresolved++;
+     }
+   }
+   return { checked: rows.length, confirmedDone, unresolved };
+ }
+
   // --- Public API ---
 
   /**

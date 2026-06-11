@@ -51,6 +51,8 @@ class SqliteJournalStore {
         step_id TEXT NOT NULL,
         step_index INTEGER,
         command TEXT,
+        verify TEXT,
+        compensation TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
         attempt INTEGER NOT NULL DEFAULT 0,
         result TEXT,
@@ -60,6 +62,14 @@ class SqliteJournalStore {
         UNIQUE (plan_id, step_id)
       );
     `);
+    // Migracja defensywna dla istniejących baz (kolumny dodane później).
+    for (const col of ['verify TEXT', 'compensation TEXT']) {
+      try {
+        await this.db.exec(`ALTER TABLE execution_journal ADD COLUMN ${col};`);
+      } catch {
+        /* kolumna już istnieje */
+      }
+    }
     await this.db.exec(
       `CREATE INDEX IF NOT EXISTS idx_exec_journal_status ON execution_journal (status);`
     );
@@ -69,9 +79,12 @@ class SqliteJournalStore {
   async upsertPending(row) {
     await this.db.run(
       `INSERT OR IGNORE INTO execution_journal
-        (plan_id, plan_hash, server_id, step_id, step_index, command, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [row.planId, row.planHash, row.serverId, row.stepId, row.stepIndex, row.command]
+        (plan_id, plan_hash, server_id, step_id, step_index, command, verify, compensation, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [
+        row.planId, row.planHash, row.serverId, row.stepId, row.stepIndex,
+        row.command, row.verify || null, row.compensation || null,
+      ]
     );
   }
 
@@ -125,10 +138,14 @@ function createMemoryStore() {
       const k = key(row.planId, row.stepId);
       if (!rows.has(k)) {
         rows.set(k, {
-          ...row,
           plan_id: row.planId,
+          plan_hash: row.planHash || null,
+          server_id: row.serverId != null ? row.serverId : null,
           step_id: row.stepId,
           step_index: row.stepIndex,
+          command: row.command || null,
+          verify: row.verify || null,
+          compensation: row.compensation || null,
           status: 'pending',
           attempt: 0,
           result: null,
@@ -196,6 +213,8 @@ class ExecutionJournal {
         stepId: step.id,
         stepIndex: i++,
         command: step.command || null,
+        verify: step.verify || null,
+        compensation: step.compensation || null,
       });
     }
   }
@@ -228,6 +247,16 @@ class ExecutionJournal {
   /** Kroki przerwane awarią (zostały w 'executing' po restarcie). */
   async findInterrupted() {
     return this.store.listByStatus('executing');
+  }
+
+  /** Kroki oczekujące na weryfikację (read-back po odzyskaniu). */
+  async listNeedsVerification() {
+    return this.store.listByStatus('needs_verification');
+  }
+
+  /** Oznacza krok jako zweryfikowany-OK ('done') po udanym read-backu. */
+  async markVerifiedDone(planId, stepId) {
+    await this.store.update(planId, stepId, { status: 'done' });
   }
 
   /**

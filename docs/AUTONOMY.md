@@ -255,15 +255,18 @@ zmienia kolejność roadmapy.
   Przy niepowodzeniu w trybie saga już wykonane kroki są wycofywane w odwrotnej
   kolejności (status planu `rolled_back`). `verify`/`compensation` wchodzą do
   hasha planu (są więc objęte zatwierdzeniem).
+- **Read-back przerwanych kroków po restarcie.** Journal trzyma `verify`/
+  `compensation` per krok. `AppService.start` po `recover()` woła
+  `LLMManager.verifyInterruptedSteps`: dla kroków `needs_verification` uruchamia
+  ich `verify` (read-only) i ustala 'done' bez ślepego ponawiania operacji;
+  nierozstrzygnięte zostają do ręcznej decyzji.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Automatyczna weryfikacja kroków `needs_verification` po restarcie**
-   (read-back), z użyciem mechanizmu `verify` z saga.
-3. **`verify` jako obowiązkowy element kontraktu capability** (timeouty,
+2. **`verify` jako obowiązkowy element kontraktu capability** (timeouty,
    wykrywanie flappingu, postconditions dla zmian wielohostowych) — dziś `verify`
    jest opcjonalne i wypełniane ręcznie/przez typed actions.
 4. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz

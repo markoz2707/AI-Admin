@@ -95,6 +95,39 @@ test('saga: nieudana weryfikacja kroku wycofuje wcześniejszy (kompensacja)', as
   assert.strictEqual(s1.compensated, true);
 });
 
+test('read-back: verify OK potwierdza wykonanie przerwanego kroku (-> done)', async () => {
+  const { m, journal } = setup(); // fake executeCommand zwraca code 0
+  await journal.startRun({
+    planId: 'pX', serverId: 1,
+    steps: [{ id: 's1', command: 'echo a', verify: 'test -f /ok' }],
+  });
+  await journal.beginStep('pX', 's1'); // "awaria" w trakcie
+  await journal.recover(); // -> needs_verification
+  const r = await m.verifyInterruptedSteps();
+  assert.strictEqual(r.confirmedDone, 1);
+  assert.strictEqual(await journal.isStepDone('pX', 's1'), true);
+});
+
+test('read-back: verify != 0 zostawia krok do weryfikacji (bez ponawiania)', async () => {
+  const { m, journal, executed } = setup();
+  m.serverManager.executeCommand = async (id, cmd) => {
+    executed.push(cmd);
+    return { stdout: '', stderr: 'nie', code: 1 };
+  };
+  await journal.startRun({
+    planId: 'pY', serverId: 1,
+    steps: [{ id: 's1', command: 'echo a', verify: 'test -f /missing' }],
+  });
+  await journal.beginStep('pY', 's1');
+  await journal.recover();
+  const r = await m.verifyInterruptedSteps();
+  assert.strictEqual(r.confirmedDone, 0);
+  assert.strictEqual(r.unresolved, 1);
+  assert.strictEqual(await journal.isStepDone('pY', 's1'), false);
+  // uruchomiono tylko `verify`, NIE oryginalną operację
+  assert.deepStrictEqual(executed, ['test -f /missing']);
+});
+
 test('dryRun nie wykonuje ani nie żurnaluje', async () => {
   const { m, journal, executed } = setup();
   const steps = [{ id: 's1', type: 'command', command: 'echo a', os: 'linux' }];

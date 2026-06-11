@@ -242,7 +242,10 @@ i odporność na awarie wielokrokowych planów:
 - **idempotencja** — krok `done` nie jest wykonywany ponownie przy wznowieniu,
 - **odzyskiwanie po awarii** — kroki przerwane (zostają `executing`) trafiają do
   `needs_verification` zamiast ślepego ponowienia (`AppService.start` woła
-  recovery przy każdym uruchomieniu).
+  recovery przy każdym uruchomieniu),
+- **read-back** — dla kroków `needs_verification` uruchamiana jest ich
+  postcondition `verify` (read-only), by potwierdzić wykonanie bez powtarzania
+  operacji; nierozstrzygnięte zostają do ręcznej decyzji.
 
 Journal jest wpięty w `LLMManager.executePlan` (best-effort — awaria journala nie
 blokuje wykonania) i działa na SQLite, z fallbackiem in-memory.
