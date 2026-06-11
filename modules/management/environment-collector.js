@@ -12,6 +12,7 @@
 
 const osDetector = require('./os-detector');
 const { Anonymizer } = require('../llm/anonymizer');
+const { sanitizeValue } = require('../llm/perception-guard');
 
 /** Parsuje porty nasłuchujące z `ss -ltnp` (Linux) lub `netstat -ano` (Windows). */
 function parseListeningPorts(out, os) {
@@ -176,6 +177,14 @@ async function collect(params = {}) {
     } catch (e) {
       snapshot.packagesError = e.message;
     }
+  }
+
+  // Obrona przed zatrutą percepcją: oflaguj wartości wyglądające na próbę
+  // wstrzyknięcia instrukcji (np. złośliwy hostname/nazwa usługi). Dane
+  // zostają surowe, ale z ostrzeżeniem do eskalacji w pętli autonomicznej.
+  const { flags } = sanitizeValue(snapshot);
+  if (flags.length) {
+    snapshot.perceptionWarnings = flags;
   }
 
   return snapshot;

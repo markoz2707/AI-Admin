@@ -260,6 +260,14 @@ zmienia kolejność roadmapy.
   `LLMManager.verifyInterruptedSteps`: dla kroków `needs_verification` uruchamia
   ich `verify` (read-only) i ustala 'done' bez ślepego ponawiania operacji;
   nierozstrzygnięte zostają do ręcznej decyzji.
+- **Obrona przed zatrutą percepcją (`modules/llm/perception-guard.js`).** Dane ze
+  zdalnych, niezaufanych hostów są traktowane jako nieufne: `detectInjection`
+  wykrywa próby przejęcia instrukcji (PL/EN, role-markery, tokeny specjalne),
+  `sanitizeText`/`sanitizeValue` neutralizują (usuwają sekwencje sterujące i
+  frazy-instrukcje, ograniczają długość), a `wrapUntrusted` opakowuje dane w
+  prompt jako jawne DANE (nie polecenia). Wpięte w `task-generator` (host/nazwy
+  aplikacji) oraz `environment-collector` (flaguje `perceptionWarnings` do
+  eskalacji w pętli autonomicznej).
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
@@ -269,20 +277,16 @@ zmienia kolejność roadmapy.
 2. **`verify` jako obowiązkowy element kontraktu capability** (timeouty,
    wykrywanie flappingu, postconditions dla zmian wielohostowych) — dziś `verify`
    jest opcjonalne i wypełniane ręcznie/przez typed actions.
-4. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
+3. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
    `type:'command'`; `target` wiązany z inwentarzem migawki (po UUID/serialu),
    prekondycje ewaluowane na świeżej migawce w momencie wykonania.
-5. **Obrona przed zatrutą percepcją (prompt injection).** Dane z
-   `environment-collector` pochodzą z potencjalnie skompromitowanych hostów i
-   trafiają do kontekstu LLM — traktować jako nieufne: kontekst strukturalny,
-   walidacja schematu odpowiedzi, brak wykonywania instrukcji z danych.
-6. **Aprobata pinuje też hash prekondycji stanu**, nie tylko czas — jeśli stan
+4. **Aprobata pinuje też hash prekondycji stanu**, nie tylko czas — jeśli stan
    się zmienił między zatwierdzeniem a wykonaniem, aprobata wygasa.
-7. **Self-lockout detection** — model „ścieżki zarządzania" (NIC/route/jumphost/
+5. **Self-lockout detection** — model „ścieżki zarządzania" (NIC/route/jumphost/
    DNS, także tranzytywnie); blokada akcji odcinającej własny dostęp bez APPROVAL.
-8. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
+6. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
    powoduje approval fatigue dla rutynowych instalacji.
-9. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
+7. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
    APPROVAL) — „wykonam za T, chyba że zawetujesz".
 
 ### Decyzje technologiczne (zrewidowane)
