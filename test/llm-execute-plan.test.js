@@ -128,6 +128,30 @@ test('read-back: verify != 0 zostawia krok do weryfikacji (bez ponawiania)', asy
   assert.deepStrictEqual(executed, ['test -f /missing']);
 });
 
+test('prekondycja: zmiana stanu serwera unieważnia aprobatę (PLAN_STATE_CHANGED)', async () => {
+  const { m } = setup();
+  const steps = [{ id: 's1', type: 'command', command: 'echo a', os: 'linux' }];
+  const planHash = computePlanHash(steps);
+  const preconditionHash = await m._computePrecondition(1, { preconditionProvider: async () => 'stateA' });
+
+  const seed = () => m._planStore.set('p1', {
+    planId: 'p1', serverId: 1, os: 'linux', prompt: 'p', summary: 's',
+    steps, planHash, preconditionHash, createdAt: new Date().toISOString(),
+  });
+
+  // Stan niezmieniony -> wykonuje się.
+  seed();
+  const ok = await m.executePlan(1, 'p1', { planHash, preconditionProvider: async () => 'stateA' });
+  assert.strictEqual(ok.status, 'executed');
+
+  // Stan zmieniony -> aprobata wygasa.
+  seed();
+  await assert.rejects(
+    () => m.executePlan(1, 'p1', { planHash, preconditionProvider: async () => 'stateB' }),
+    (e) => e.code === 'PLAN_STATE_CHANGED'
+  );
+});
+
 test('dryRun nie wykonuje ani nie żurnaluje', async () => {
   const { m, journal, executed } = setup();
   const steps = [{ id: 's1', type: 'command', command: 'echo a', os: 'linux' }];

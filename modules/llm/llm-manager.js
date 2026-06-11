@@ -18,6 +18,7 @@
 const LLMRouter = require('./llm-router'); // router: wewnętrzny vs zewnętrzny LLM
 const TaskGenerator = require('./task-generator');
 const PromptProcessor = require('./prompt-processor');
+const crypto = require('crypto');
 const Orchestrator = require('./orchestrator');
 const { evaluateCommand } = require('./command-guard');
 const { planFromTasks, computePlanHash } = require('./plan-schema');
@@ -292,17 +293,59 @@ class LLMManager {
     const planHash = computePlanHash(guarded.steps);
     const planId = 'plan_' + Math.random().toString(36).slice(2, 10);
 
+    // Opcjonalny pin prekondycji stanu serwera (aprobata wygasa, gdy stan się
+    // zmieni między zatwierdzeniem a wykonaniem). Domyślnie wyłączony.
+    let preconditionHash = null;
+    if (options.capturePrecondition || options.preconditionProvider) {
+      try {
+        preconditionHash = await this._computePrecondition(serverId, options);
+      } catch (e) {
+        this.logger.warn('Nie udało się pobrać prekondycji stanu', { error: e.message });
+      }
+    }
+
     this._planStore.set(planId, {
       planId, serverId, os, prompt, summary: plan,
-      steps: guarded.steps, planHash, createdAt: new Date().toISOString(),
+      steps: guarded.steps, planHash, preconditionHash, createdAt: new Date().toISOString(),
     });
 
     return {
-      planId, planHash, summary: plan, steps: guarded.steps,
+      planId, planHash, preconditionHash, summary: plan, steps: guarded.steps,
       maxRisk: guarded.maxRisk,
       requiresApproval: guarded.requiresApproval,
       hasBlocked: guarded.hasBlocked,
     };
+  }
+
+  /** Liczy hash prekondycji (z wstrzykniętego providera lub fingerprintu serwera). */
+  async _computePrecondition(serverId, options = {}) {
+    let value;
+    if (typeof options.preconditionProvider === 'function') {
+      value = await options.preconditionProvider(serverId);
+    } else {
+      value = await this._serverStateFingerprint(serverId);
+    }
+    const str = typeof value === 'string' ? value : JSON.stringify(value);
+    return crypto.createHash('sha256').update(str).digest('hex');
+  }
+
+  /** Lekki odcisk stanu serwera (read-only): OS/kernel + hostname. */
+  async _serverStateFingerprint(serverId) {
+    const exec = async (cmd) => {
+      try {
+        if (!this.serverManager.isServerConnected(serverId)) {
+          await this.serverManager.connectToServer(serverId);
+        }
+        const r = await this.serverManager.executeCommand(serverId, cmd, { source: 'system' });
+        return (r && r.stdout) || '';
+      } catch {
+        return '';
+      }
+    };
+    const parts = [];
+    parts.push(await exec('uname -a 2>/dev/null || ver'));
+    parts.push(await exec('hostname'));
+    return parts.join('\n');
   }
 
   /**
@@ -324,6 +367,20 @@ class LLMManager {
     if (options.planHash && options.planHash !== stored.planHash) {
       const e = new Error('Plan zmienił się od zatwierdzenia — odśwież i zatwierdź ponownie');
       e.code = 'PLAN_CHANGED'; throw e;
+    }
+    // Prekondycja stanu: aprobata wygasa, jeśli stan serwera zmienił się od
+    // zbudowania planu (chyba że dry-run lub jawne pominięcie).
+    if (stored.preconditionHash && !options.dryRun && !options.skipPreconditionCheck) {
+      let current = null;
+      try {
+        current = await this._computePrecondition(serverId, options);
+      } catch (e) {
+        this.logger.warn('Nie można zweryfikować prekondycji stanu', { error: e.message });
+      }
+      if (current !== stored.preconditionHash) {
+        const e = new Error('Stan serwera zmienił się od zatwierdzenia — wymagane ponowne zatwierdzenie');
+        e.code = 'PLAN_STATE_CHANGED'; throw e;
+      }
     }
 
     const approvals = Array.isArray(options.approvals)

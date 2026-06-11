@@ -273,6 +273,11 @@ zmienia kolejność roadmapy.
   port zarządzania, usunięcie domyślnej trasy) są klasyfikowane jako `high`
   (APPROVAL) z flagą `selfLockout` — nigdy autonomicznie. (MVP oparty na wzorcach;
   pełny, tranzytywny model „ścieżki zarządzania" pozostaje rozwinięciem.)
+- **Aprobata pinuje hash prekondycji stanu.** `buildPlan` może uchwycić odcisk
+  stanu serwera (`preconditionHash`), a `executePlan` odrzuca wykonanie
+  (`PLAN_STATE_CHANGED`), gdy stan zmienił się od zatwierdzenia — aprobata wygasa
+  nie tylko po czasie, ale i po zmianie stanu. Provider odcisku jest wstrzykiwalny
+  (domyślnie lekki fingerprint OS/hostname; mechanizm domyślnie wyłączony).
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
@@ -285,13 +290,11 @@ zmienia kolejność roadmapy.
 3. **Typed actions jako jedyna ścieżka w trybie autonomicznym** — zakaz
    `type:'command'`; `target` wiązany z inwentarzem migawki (po UUID/serialu),
    prekondycje ewaluowane na świeżej migawce w momencie wykonania.
-4. **Aprobata pinuje też hash prekondycji stanu**, nie tylko czas — jeśli stan
-   się zmienił między zatwierdzeniem a wykonaniem, aprobata wygasa.
-5. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
+4. **Reklasyfikacja `sudo`** po przejściu na typed actions — dziś `sudo`=high
    powoduje approval fatigue dla rutynowych instalacji.
-6. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
+5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny
    MVP oparty na wzorcach.
-7. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
+6. **Nowy poziom autonomii: ODROCZONE Z PRAWEM WETA** (most między NOTIFY a
    APPROVAL) — „wykonam za T, chyba że zawetujesz".
 
 ### Decyzje technologiczne (zrewidowane)
