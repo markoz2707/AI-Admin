@@ -49,6 +49,20 @@ test('buildPlan przypisuje autorytet per krok i maxAuthority', async () => {
   assert.ok(order.indexOf(plan2.steps[0].authority) >= order.indexOf(plan.steps[0].authority));
 });
 
+test('buildPlanFromTasks buduje plan deterministycznie (bez LLM)', async () => {
+  const m = setup([]); // _buildPlanAndTasks nieużywane na tej ścieżce
+  m.getServerConfig = async () => ({ id: 1, os: 'linux', environment: 'dev' });
+  const plan = await m.buildPlanFromTasks(
+    [{ type: 'service', serviceName: 'nginx', action: 'start' }],
+    'remediacja',
+    1
+  );
+  assert.strictEqual(plan.summary, 'remediacja');
+  assert.strictEqual(plan.steps[0].type, 'service.start');
+  assert.ok(plan.steps[0].verify);
+  assert.ok(plan.planHash);
+});
+
 test('polityka autorytetu z konfiguracji: autonomyEnabled=false -> wszystko APPROVAL', async () => {
   const m = setup([{ type: 'installation', app: 'nginx' }]);
   m.setAuthorityPolicy({ autonomyEnabled: false });

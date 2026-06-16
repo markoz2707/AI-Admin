@@ -16,6 +16,7 @@ function createMaintenanceTick(deps = {}) {
     collect,
     goalProvider = null,
     buildPlan,
+    buildPlanFromTasks = null,
     executeAutonomously,
     logger = null,
     autoExecute = false,
@@ -73,7 +74,14 @@ function createMaintenanceTick(deps = {}) {
 
       let plan;
       try {
-        plan = await buildPlan(goal, server.id);
+        // Cel deklaratywny (desired-state) -> plan z zadań bez LLM;
+        // cel tekstowy -> plan przez LLM.
+        if (goal && typeof goal === 'object' && Array.isArray(goal.tasks)) {
+          if (!buildPlanFromTasks) throw new Error('brak buildPlanFromTasks dla celu zadaniowego');
+          plan = await buildPlanFromTasks(goal.tasks, goal.summary, server.id);
+        } else {
+          plan = await buildPlan(goal, server.id);
+        }
         summary.proposed++;
       } catch (e) {
         summary.errors++;

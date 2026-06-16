@@ -331,16 +331,21 @@ zmienia kolejność roadmapy.
   (`autoExecute`), a autorytet i tak gatuje destrukcyjne kroki. Wpięte w
   `AppService` (kolektor + `buildPlan` + `executeAutonomously`); bez `goalProvider`
   tick tylko percypuje.
+- **Wykrywanie dryfu względem stanu pożądanego (`modules/agent/drift-detector.js`).**
+  Porównuje migawkę z deklaratywnym desired-state (usługi mają działać, pakiety mają
+  być zainstalowane) i zwraca zadania remediacji jako typed actions.
+  `LLMManager.buildPlanFromTasks` buduje z nich plan **deterministycznie (bez LLM)**
+  z pełnymi gwarancjami (guardrail, autorytet, hash, journal). `createDesiredStateGoal`
+  wpina to jako `goalProvider` pętli (`AppService` opcja `desiredState`).
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Wykrywanie dryfu / `goalProvider`** — orchestracja ticku (z poison-guard)
-   jest gotowa; brakuje samej logiki celu: porównania migawki ze **stanem
-   pożądanym** (desired-state) lub LLM-owego wnioskowania, co zwraca cel/prompt
-   remediacji. Opcjonalnie NOTIFY przez deferred-with-veto.
+2. **Persystencja/edycja desired-state i polityki** (UI) oraz LLM-owe wnioskowanie
+   celu ponad deterministyczny drift (dziś desired-state porównuje usługi/pakiety;
+   silnik i wpięcie gotowe). Opcjonalnie NOTIFY przez deferred-with-veto w pętli.
 3. **UI/edycja polityki autorytetu** — backend (ładowanie z ustawień + reload na
    żywo) gotowy; brakuje ekranu edycji progów per środowisko/kategoria oraz okien
    czasowych.

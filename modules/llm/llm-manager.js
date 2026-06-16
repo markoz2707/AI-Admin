@@ -365,6 +365,32 @@ class LLMManager {
     this.logger.logAction('LLM_PROMPT_RECEIVED', { serverId, snippet: prompt.slice(0, 200) });
 
     const { plan, tasks } = await this._buildPlanAndTasks(prompt, serverConfig);
+    return this._assemblePlan(serverId, serverConfig, plan, tasks, options);
+  }
+
+  /**
+   * Buduje plan DETERMINISTYCZNIE z gotowych zadań (bez LLM) — np. remediacja
+   * dryfu względem stanu pożądanego. Te same gwarancje co buildPlan: typed
+   * actions, guardrail, autorytet, hash, magazyn.
+   * @param {Array} tasks
+   * @param {string} summary
+   * @param {number|string} serverId
+   * @param {Object} [options]
+   */
+  async buildPlanFromTasks(tasks, summary, serverId, options = {}) {
+    const serverConfig = await this.getServerConfig(serverId);
+    if (!serverConfig) {
+      throw new Error(`Serwer ${serverId} nie istnieje lub nie jest zarejestrowany`);
+    }
+    return this._assemblePlan(serverId, serverConfig, summary || 'plan', tasks || [], options);
+  }
+
+  /**
+   * Wspólny montaż planu: rozstrzygnięcie kroków (typed actions/raw), guardrail,
+   * decyzja autorytetu, hash, opcjonalna prekondycja i zapis do magazynu.
+   * @private
+   */
+  async _assemblePlan(serverId, serverConfig, summary, tasks, options = {}) {
     const os = (serverConfig.os || 'linux').toLowerCase();
 
     // Rozstrzygnij każdy krok do konkretnego polecenia (to, co realnie zostanie
@@ -373,7 +399,7 @@ class LLMManager {
     const typedOnly = !!options.typedOnly;
     const resolved = [];
     let rejectedRaw = 0;
-    planFromTasks(tasks, plan).steps.forEach((s, i) => {
+    planFromTasks(tasks, summary).steps.forEach((s, i) => {
       const id = s.id || `step_${i + 1}`;
       const r = actionRegistry.resolve({ ...s, id }, os);
       if (r.typed) {
@@ -396,7 +422,7 @@ class LLMManager {
       );
     }
 
-    const guarded = this.orchestrator.buildPlan({ summary: plan, steps: resolved });
+    const guarded = this.orchestrator.buildPlan({ summary, steps: resolved });
 
     // Decyzja autorytetu per krok (AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN) na
     // podstawie guardraila + metadanych typed actions + środowiska + polityki.
@@ -421,12 +447,12 @@ class LLMManager {
     }
 
     this._planStore.set(planId, {
-      planId, serverId, os, environment: serverConfig.environment, prompt, summary: plan,
+      planId, serverId, os, environment: serverConfig.environment, prompt: summary, summary,
       steps: guarded.steps, planHash, preconditionHash, createdAt: new Date().toISOString(),
     });
 
     return {
-      planId, planHash, preconditionHash, summary: plan, steps: guarded.steps,
+      planId, planHash, preconditionHash, summary, steps: guarded.steps,
       maxRisk: guarded.maxRisk,
       maxAuthority,
       requiresApproval: guarded.requiresApproval,

@@ -32,6 +32,7 @@ const CommandHistoryRepository = require('../history/command-history-repo');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const AgentLoop = require('../agent/agent-loop');
 const { createMaintenanceTick } = require('../agent/maintenance-tick');
+const { createDesiredStateGoal } = require('../agent/drift-detector');
 const { ROLES, PERMISSIONS, checkPermission } = require('../access/rbac');
 const osDetector = require('../management/os-detector');
 const environmentCollector = require('../management/environment-collector');
@@ -73,8 +74,11 @@ class AppService {
     });
     // Opcjonalny, wstrzykiwany tick remediacji (produkcyjnie spina LLM+autonomię).
     this._customTick = options.maintenanceTick || null;
-    // Dostawca celu/dryfu (np. desired-state lub LLM) — bez niego tick tylko percypuje.
-    this._goalProvider = options.goalProvider || null;
+    // Dostawca celu/dryfu: jawny goalProvider albo desired-state (mapa/funkcja).
+    // Bez niego tick tylko percypuje.
+    this._goalProvider =
+      options.goalProvider ||
+      (options.desiredState ? createDesiredStateGoal(options.desiredState) : null);
     // Autonomiczne wykonywanie w pętli (opt-in).
     this._maintenanceAutoExecute = options.maintenanceAutoExecute === true;
   }
@@ -103,6 +107,8 @@ class AppService {
           packageManager: this.packageManager,
         }),
       buildPlan: (goal, serverId) => this.llmManager.buildPlan(goal, serverId),
+      buildPlanFromTasks: (tasks, summary, serverId) =>
+        this.llmManager.buildPlanFromTasks(tasks, summary, serverId),
       executeAutonomously: (serverId, planId, opts) =>
         this.llmManager.executeAutonomously(serverId, planId, opts),
     });
