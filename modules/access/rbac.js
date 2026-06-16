@@ -73,6 +73,11 @@ const PERMISSIONS = {
   'llm:vetoDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY], // weto (zatrzymanie) bezpieczne dla każdego
   'llm:listDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
   'llm:history': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+
+  // Pętla agenta (ciągłe utrzymanie) — sterowanie tylko admin; status szerzej
+  'agent:start': [ROLES.ADMIN],
+  'agent:stop': [ROLES.ADMIN, ROLES.OPERATOR], // zatrzymanie (kill-switch) także operator
+  'agent:status': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
   'llm:report': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
 
   // AppUsers zarządzanie

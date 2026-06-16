@@ -311,16 +311,24 @@ zmienia kolejność roadmapy.
   nie są usuwane z magazynu (można je dokończyć po zatwierdzeniu). To realizuje
   end-to-end regułę „rób sam, pytaj tylko o destrukcyjne/niebezpieczne".
   Transport: `llm:executeAutonomously`.
+- **Ciągła pętla agenta (`modules/agent/agent-loop.js`).** Cykliczny silnik z
+  twardymi barierami: brak nakładania cykli, **circuit breaker** (po serii błędów
+  pętla sama się zatrzymuje), **kill-switch** (`stop()`) i interwał jako
+  rate-limit; zegar i tick są wstrzykiwalne. W `AppService` pętla jest WYŁĄCZONA
+  domyślnie (autonomia opt-in), a domyślny tick jest zachowawczy (percepcja +
+  ostrzeżenia, bez auto-wykonywania). Sterowanie: `agent:start` (admin),
+  `agent:stop` (admin/operator — kill-switch), `agent:status`.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Ciągła pętla agenta (§6)** — okresowy perceive→reason→plan→gate→execute→
-   verify→rollback z remediacją dryfu (dziś autonomia działa na żądanie przez
-   `executeAutonomously`, nie w pętli). Opcjonalnie spinanie NOTIFY z
-   deferred-with-veto (okno na weto przed wykonaniem).
+2. **Produkcyjny tick remediacji** dla pętli agenta — wstrzykiwany `maintenanceTick`
+   spinający percepcję → wykrycie dryfu → `buildPlan` → `executeAutonomously`
+   (silnik pętli i bariery są gotowe; brakuje samego kroku LLM-driven oraz
+   wykrywania dryfu względem stanu pożądanego). Opcjonalnie NOTIFY przez
+   deferred-with-veto.
 3. **Deklaratywna polityka autorytetu z ustawień** (per środowisko/kategoria/okno
    czasowe) — silnik już ją przyjmuje; brakuje persystencji i edycji przez admina.
 4. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i

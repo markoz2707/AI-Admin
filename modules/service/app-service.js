@@ -30,6 +30,7 @@ const SettingsRepository = require('../settings/settings-repo');
 const AuditLogRepository = require('../audit/audit-log-repo');
 const CommandHistoryRepository = require('../history/command-history-repo');
 const { ExecutionJournal } = require('../journal/execution-journal');
+const AgentLoop = require('../agent/agent-loop');
 const { ROLES, PERMISSIONS, checkPermission } = require('../access/rbac');
 const osDetector = require('../management/os-detector');
 const environmentCollector = require('../management/environment-collector');
@@ -61,6 +62,49 @@ class AppService {
     this.journal = null;
     this.llmManager = null;
     this._started = false;
+
+    // Ciągła pętla agenta — domyślnie WYŁĄCZONA (autonomia opt-in). Domyślny tick
+    // jest zachowawczy: percepcja + ostrzeżenia, bez automatycznego wykonywania.
+    this.agentLoop = new AgentLoop({
+      logger: this.logger,
+      intervalMs: options.maintenanceIntervalMs || 300000,
+      tick: () => this._maintenanceTick(),
+    });
+    // Opcjonalny, wstrzykiwany tick remediacji (produkcyjnie spina LLM+autonomię).
+    this._customTick = options.maintenanceTick || null;
+  }
+
+  /**
+   * Domyślny, zachowawczy cykl utrzymania: dla włączonych serwerów zbiera
+   * percepcję i loguje ostrzeżenia (dryf/zatruta percepcja). NIE wykonuje
+   * autonomicznie — realna remediacja jest wstrzykiwana jako maintenanceTick.
+   */
+  async _maintenanceTick() {
+    if (this._customTick) return this._customTick(this);
+    let servers = [];
+    try {
+      servers = await this.serverManager.listServers({ isEnabled: true });
+    } catch (e) {
+      this.logger.error('Pętla utrzymania: nie można pobrać serwerów', e);
+      return;
+    }
+    this.logger.info('Pętla utrzymania: skan percepcji', { servers: servers.length });
+    // Świadomie zachowawczo — bez automatycznego wykonywania zmian.
+  }
+
+  /** Uruchamia ciągłą pętlę agenta (admin). */
+  startMaintenance(opts = {}) {
+    return this.agentLoop.start(opts.intervalMs);
+  }
+
+  /** Zatrzymuje pętlę agenta (kill-switch). */
+  stopMaintenance() {
+    return this.agentLoop.stop();
+  }
+
+  /** Status pętli agenta. */
+  maintenanceStatus() {
+    return this.agentLoop.status();
   }
 
   /**
@@ -130,8 +174,13 @@ class AppService {
     return this;
   }
 
-  /** Czyste zamknięcie — rozłącza wszystkie połączenia do serwerów. */
+  /** Czyste zamknięcie — zatrzymuje pętlę agenta i rozłącza połączenia. */
   async stop() {
+    try {
+      this.agentLoop.stop();
+    } catch (e) {
+      this.logger.error('Błąd zatrzymywania pętli agenta', e);
+    }
     try {
       await this.serverManager.disconnectAll();
     } catch (e) {
@@ -300,6 +349,10 @@ class AppService {
       'llm:vetoDeferred': async ({ deferredId, reason }) =>
         this.llmManager.vetoDeferredExecution(deferredId, reason || null),
       'llm:listDeferred': async () => this.llmManager.listDeferredExecutions(),
+
+      'agent:start': async ({ intervalMs }) => this.startMaintenance({ intervalMs }),
+      'agent:stop': async () => this.stopMaintenance(),
+      'agent:status': async () => this.maintenanceStatus(),
 
       'env:detectOS': async ({ serverId }, context) => {
         const server = await this.serverManager.getServer(serverId);
