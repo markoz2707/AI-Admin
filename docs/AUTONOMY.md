@@ -325,17 +325,22 @@ zmienia kolejność roadmapy.
   przy starcie, przekazywana do `LLMManager` i przeładowywana na żywo przy zmianie
   ustawień (`authority.*`). `buildPlan` używa polityki domyślnej, z możliwością
   nadpisania per wywołanie.
+- **Tick remediacji (`modules/agent/maintenance-tick.js`).** Jeden cykl pętli:
+  perceive → poison-guard → goal → plan → execute. **Twarda zasada:** serwery z
+  `perceptionWarnings` (zatruta percepcja) są pomijane. Autonomia opt-in
+  (`autoExecute`), a autorytet i tak gatuje destrukcyjne kroki. Wpięte w
+  `AppService` (kolektor + `buildPlan` + `executeAutonomously`); bez `goalProvider`
+  tick tylko percypuje.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
 1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
    źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
    rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Produkcyjny tick remediacji** dla pętli agenta — wstrzykiwany `maintenanceTick`
-   spinający percepcję → wykrycie dryfu → `buildPlan` → `executeAutonomously`
-   (silnik pętli i bariery są gotowe; brakuje samego kroku LLM-driven oraz
-   wykrywania dryfu względem stanu pożądanego). Opcjonalnie NOTIFY przez
-   deferred-with-veto.
+2. **Wykrywanie dryfu / `goalProvider`** — orchestracja ticku (z poison-guard)
+   jest gotowa; brakuje samej logiki celu: porównania migawki ze **stanem
+   pożądanym** (desired-state) lub LLM-owego wnioskowania, co zwraca cel/prompt
+   remediacji. Opcjonalnie NOTIFY przez deferred-with-veto.
 3. **UI/edycja polityki autorytetu** — backend (ładowanie z ustawień + reload na
    żywo) gotowy; brakuje ekranu edycji progów per środowisko/kategoria oraz okien
    czasowych.

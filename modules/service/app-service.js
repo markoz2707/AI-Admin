@@ -31,6 +31,7 @@ const AuditLogRepository = require('../audit/audit-log-repo');
 const CommandHistoryRepository = require('../history/command-history-repo');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const AgentLoop = require('../agent/agent-loop');
+const { createMaintenanceTick } = require('../agent/maintenance-tick');
 const { ROLES, PERMISSIONS, checkPermission } = require('../access/rbac');
 const osDetector = require('../management/os-detector');
 const environmentCollector = require('../management/environment-collector');
@@ -72,24 +73,40 @@ class AppService {
     });
     // Opcjonalny, wstrzykiwany tick remediacji (produkcyjnie spina LLM+autonomię).
     this._customTick = options.maintenanceTick || null;
+    // Dostawca celu/dryfu (np. desired-state lub LLM) — bez niego tick tylko percypuje.
+    this._goalProvider = options.goalProvider || null;
+    // Autonomiczne wykonywanie w pętli (opt-in).
+    this._maintenanceAutoExecute = options.maintenanceAutoExecute === true;
   }
 
   /**
-   * Domyślny, zachowawczy cykl utrzymania: dla włączonych serwerów zbiera
-   * percepcję i loguje ostrzeżenia (dryf/zatruta percepcja). NIE wykonuje
-   * autonomicznie — realna remediacja jest wstrzykiwana jako maintenanceTick.
+   * Cykl utrzymania: percepcja włączonych serwerów z poszanowaniem poison-guard.
+   * Bez goalProvider jest zachowawczy (tylko percepcja). Z goalProvider buduje
+   * plany, a wykonuje je tylko gdy autonomia w pętli jest włączona (autorytet i
+   * tak gatuje destrukcyjne kroki).
    */
   async _maintenanceTick() {
     if (this._customTick) return this._customTick(this);
-    let servers = [];
-    try {
-      servers = await this.serverManager.listServers({ isEnabled: true });
-    } catch (e) {
-      this.logger.error('Pętla utrzymania: nie można pobrać serwerów', e);
-      return;
-    }
-    this.logger.info('Pętla utrzymania: skan percepcji', { servers: servers.length });
-    // Świadomie zachowawczo — bez automatycznego wykonywania zmian.
+    const tick = createMaintenanceTick({
+      logger: this.logger,
+      autoExecute: this._maintenanceAutoExecute,
+      goalProvider: this._goalProvider,
+      listServers: () => this.serverManager.listServers({ isEnabled: true }),
+      collect: (server) =>
+        environmentCollector.collect({
+          execute: this._makeServerExecutor(server.id, { user: null }),
+          server,
+          os: server.os,
+          serverId: server.id,
+          serviceManager: this.serviceManager,
+          userManager: this.userManager,
+          packageManager: this.packageManager,
+        }),
+      buildPlan: (goal, serverId) => this.llmManager.buildPlan(goal, serverId),
+      executeAutonomously: (serverId, planId, opts) =>
+        this.llmManager.executeAutonomously(serverId, planId, opts),
+    });
+    return tick();
   }
 
   /** Uruchamia ciągłą pętlę agenta (admin). */
