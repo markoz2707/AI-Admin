@@ -70,3 +70,17 @@ test('servers:get dla zalogowanego zwraca dane', async () => {
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.data.id, 5);
 });
+
+test('loadAuthorityPolicy scala obiekt bazowy z nadpisaniami skalarnymi', async () => {
+  const svc = setup();
+  const store = {
+    'authority.policy': { minAuthority: 'AUTONOMOUS' },
+    'authority.autonomyEnabled': false,
+    'authority.categoryMin': { security: 'APPROVAL' },
+  };
+  svc.settingsRepo = { get: async (_scope, key) => (key in store ? store[key] : null) };
+  const policy = await svc.loadAuthorityPolicy();
+  assert.strictEqual(policy.autonomyEnabled, false);
+  assert.strictEqual(policy.minAuthority, 'AUTONOMOUS');
+  assert.deepStrictEqual(policy.categoryMin, { security: 'APPROVAL' });
+});

@@ -974,7 +974,7 @@ ipcMain.handle(
     if (
       llmManager &&
       keys.some(
-        (k) => k === 'llm.provider' || k === 'llm.model' || k.startsWith('llm.local.') || k === 'llm.allowAnonymization'
+        (k) => k === 'llm.provider' || k === 'llm.model' || k.startsWith('llm.local.') || k === 'llm.allowAnonymization' || k.startsWith('authority.')
       )
     ) {
       try {

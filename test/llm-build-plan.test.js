@@ -49,6 +49,21 @@ test('buildPlan przypisuje autorytet per krok i maxAuthority', async () => {
   assert.ok(order.indexOf(plan2.steps[0].authority) >= order.indexOf(plan.steps[0].authority));
 });
 
+test('polityka autorytetu z konfiguracji: autonomyEnabled=false -> wszystko APPROVAL', async () => {
+  const m = setup([{ type: 'installation', app: 'nginx' }]);
+  m.setAuthorityPolicy({ autonomyEnabled: false });
+  const plan = await m.buildPlan('zainstaluj', 1);
+  assert.strictEqual(plan.steps[0].authority, 'APPROVAL');
+  assert.strictEqual(plan.maxAuthority, 'APPROVAL');
+});
+
+test('opcja policy w buildPlan ma pierwszeństwo nad domyślną', async () => {
+  const m = setup([{ type: 'installation', app: 'nginx' }]);
+  m.setAuthorityPolicy({ autonomyEnabled: false }); // domyślna restrykcyjna
+  const plan = await m.buildPlan('zainstaluj', 1, { policy: {} }); // nadpisz luźniejszą
+  assert.ok(['AUTONOMOUS', 'NOTIFY'].includes(plan.steps[0].authority));
+});
+
 test('bez typedOnly surowe polecenie pozostaje w planie', async () => {
   const m = setup([{ type: 'command', command: 'uname -a' }]);
   const plan = await m.buildPlan('zrób', 1);

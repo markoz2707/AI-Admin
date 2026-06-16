@@ -143,12 +143,14 @@ class AppService {
       this.logger.warn('Klucz API LLM (llm.apiKey) nie jest ustawiony.');
     }
     const routing = await this.loadLLMRoutingConfig();
+    const authorityPolicy = await this.loadAuthorityPolicy();
 
     this.llmManager = new LLMManager({
       logger: this.logger,
       serverManager: this.serverManager,
       apiKey,
       journal: this.journal,
+      authorityPolicy,
       ...routing,
     });
 
@@ -234,10 +236,41 @@ class AppService {
     };
   }
 
-  /** Przeładowuje konfigurację routingu LLM na żywo (po zmianie ustawień). */
+  /**
+   * Czyta deklaratywną politykę autorytetu z ustawień.
+   * Wspiera pełny obiekt `authority.policy` (JSON) oraz pojedyncze nadpisania:
+   *  - authority.autonomyEnabled : bool
+   *  - authority.minAuthority    : 'AUTONOMOUS'|'NOTIFY'|'APPROVAL'
+   *  - authority.environmentBump : obiekt JSON (np. {"prod":1})
+   *  - authority.categoryMin     : obiekt JSON (np. {"security":"APPROVAL"})
+   */
+  async loadAuthorityPolicy() {
+    const get = async (key, dflt) => {
+      try {
+        const v = await this.settingsRepo.get('global', key);
+        return v === null || v === undefined ? dflt : v;
+      } catch {
+        return dflt;
+      }
+    };
+    const base = (await get('authority.policy', null)) || {};
+    const policy = { ...base };
+    const autonomyEnabled = await get('authority.autonomyEnabled', undefined);
+    if (autonomyEnabled !== undefined) policy.autonomyEnabled = autonomyEnabled !== false;
+    const minAuthority = await get('authority.minAuthority', undefined);
+    if (minAuthority) policy.minAuthority = minAuthority;
+    const environmentBump = await get('authority.environmentBump', undefined);
+    if (environmentBump && typeof environmentBump === 'object') policy.environmentBump = environmentBump;
+    const categoryMin = await get('authority.categoryMin', undefined);
+    if (categoryMin && typeof categoryMin === 'object') policy.categoryMin = categoryMin;
+    return policy;
+  }
+
+  /** Przeładowuje konfigurację routingu LLM oraz politykę autorytetu na żywo. */
   async reloadLLMConfig() {
     if (!this.llmManager) return;
     this.llmManager.setLLMConfig(await this.loadLLMRoutingConfig());
+    this.llmManager.setAuthorityPolicy(await this.loadAuthorityPolicy());
   }
 
   // ---------------------------------------------------------------------------

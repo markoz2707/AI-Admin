@@ -318,6 +318,13 @@ zmienia kolejność roadmapy.
   domyślnie (autonomia opt-in), a domyślny tick jest zachowawczy (percepcja +
   ostrzeżenia, bez auto-wykonywania). Sterowanie: `agent:start` (admin),
   `agent:stop` (admin/operator — kill-switch), `agent:status`.
+- **Deklaratywna polityka autorytetu z ustawień (`AppService.loadAuthorityPolicy`).**
+  Admin steruje progami auto/approval przez ustawienia (`authority.policy` JSON +
+  nadpisania: `authority.autonomyEnabled`, `authority.minAuthority`,
+  `authority.environmentBump`, `authority.categoryMin`). Polityka jest wczytywana
+  przy starcie, przekazywana do `LLMManager` i przeładowywana na żywo przy zmianie
+  ustawień (`authority.*`). `buildPlan` używa polityki domyślnej, z możliwością
+  nadpisania per wywołanie.
 
 ### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
 
@@ -329,8 +336,9 @@ zmienia kolejność roadmapy.
    (silnik pętli i bariery są gotowe; brakuje samego kroku LLM-driven oraz
    wykrywania dryfu względem stanu pożądanego). Opcjonalnie NOTIFY przez
    deferred-with-veto.
-3. **Deklaratywna polityka autorytetu z ustawień** (per środowisko/kategoria/okno
-   czasowe) — silnik już ją przyjmuje; brakuje persystencji i edycji przez admina.
+3. **UI/edycja polityki autorytetu** — backend (ładowanie z ustawień + reload na
+   żywo) gotowy; brakuje ekranu edycji progów per środowisko/kategoria oraz okien
+   czasowych.
 4. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
    postconditions wielohostowe; powiązać `target` z inwentarzem migawki (UUID/serial).
 5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny MVP.

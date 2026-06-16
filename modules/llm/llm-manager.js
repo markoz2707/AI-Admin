@@ -43,12 +43,16 @@ class LLMManager {
      local = undefined,
      allowAnonymization = undefined,
      journal = null,
+     authorityPolicy = null,
    } = config;
 
    this.logger = logger || new Logger('llm-manager.log');
 
    // Trwały journal wykonania (idempotencja + odzyskiwanie po awarii).
    this._journal = journal;
+
+   // Polityka autorytetu (z ustawień) — domyślna decyzja auto/approval.
+   this._authorityPolicy = authorityPolicy || {};
 
    // Konfiguracja routingu LLM (trzymana, by móc rebuildować pipeline).
    this._llmConfig = {
@@ -165,6 +169,12 @@ class LLMManager {
  /** Zwraca status routingu/providerów (do UI/diagnostyki). */
  getLLMStatus() {
    return this.router.getStatus();
+ }
+
+ /** Ustawia politykę autorytetu (decyzje auto/approval) z ustawień. */
+ setAuthorityPolicy(policy) {
+   this._authorityPolicy = policy || {};
+   this.logger.info('Zaktualizowano politykę autorytetu');
  }
 
  /** Leniwie tworzy journal wykonania (SQLite lub in-memory fallback). */
@@ -391,7 +401,8 @@ class LLMManager {
     // Decyzja autorytetu per krok (AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN) na
     // podstawie guardraila + metadanych typed actions + środowiska + polityki.
     const authorityCtx = { environment: serverConfig.environment };
-    const decided = authorityEngine.evaluatePlan(guarded.steps, authorityCtx, options.policy || {});
+    const policy = options.policy || this._authorityPolicy || {};
+    const decided = authorityEngine.evaluatePlan(guarded.steps, authorityCtx, policy);
     guarded.steps = decided.steps;
     const maxAuthority = decided.maxAuthority;
 
