@@ -1,8 +1,30 @@
+# Sekrety / klucze
 .encryption-key
+**/id_rsa
+**/*_rsa
+
+# Zależności
 node_modules/
 **/node_modules/
 ui/node_modules/
+
+# Logi
 *.log
 **/*.log
-**/id_rsa
-**/*_rsa
+
+# Baza danych SQLite (nie trzymamy danych runtime w repo)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+
+# Pliki systemowe
+.DS_Store
+**/.DS_Store
+
+# Build artefakty
+ui/build/
+
+# Środowisko
+.env
+.env.local

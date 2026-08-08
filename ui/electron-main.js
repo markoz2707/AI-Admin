@@ -1,20 +1,13 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session } = require('electron');
 const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 
 // Backend modules
-const {
-  ServerManager,
-  ServiceManager,
-  UserManager,
-  ShareManager,
-  PackageManager,
-  LogsManager,
-} = require('../modules/management');
+const AppService = require('../modules/service/app-service');
 const passwordManager = require('../modules/password-manager/password-manager');
-const LLMManager = require('../modules/llm/llm-manager');
-const migrationManager = require('../modules/database/migration-manager');
-const { encrypt, decrypt } = require('../modules/database/encryption-manager');
+const { encrypt } = require('../modules/database/encryption-manager');
+const osDetector = require('../modules/management/os-detector');
+const environmentCollector = require('../modules/management/environment-collector');
 const Logger = require('../modules/access/logger');
 const { ROLES, checkPermission } = require('../modules/access/rbac');
 const AppUserRepository = require('../modules/auth/app-user-repo');
@@ -26,18 +19,18 @@ const CommandHistoryRepository = require('../modules/history/command-history-rep
 const logger = new Logger('ui-ipc.log');
 
 let mainWindow;
-// globalne instancje
-const serverManager = new ServerManager();
-const serviceManager = new ServiceManager(serverManager.accessManager, logger);
-const userManager = new UserManager(serverManager.accessManager, logger);
-const shareManager = new ShareManager(serverManager.accessManager, logger);
-const packageManager = PackageManager
-  ? new PackageManager(serverManager, logger)
-  : null;
-const logsManager = LogsManager
-  ? new LogsManager(serverManager, logger)
-  : null;
-let llmManager; // Zmienione na let, inicjalizacja w whenReady
+
+// Control plane wspólny dla Electrona i trybu headless (ten sam backend).
+const appService = new AppService({ logger });
+const {
+  serverManager,
+  serviceManager,
+  userManager,
+  shareManager,
+  packageManager,
+  logsManager,
+} = appService;
+let llmManager; // inicjalizowane przez appService.start() w whenReady
 const appUserRepo = AppUserRepository;
 const sessionRepo = SessionRepository;
 const settingsRepo = SettingsRepository;
@@ -54,15 +47,45 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     show: false,
   });
 
+  // Content-Security-Policy. W produkcji restrykcyjna; w dev poluzowana,
+  // bo CRA hot-reload wymaga 'unsafe-eval' i połączeń websocket.
+  const csp = isDev
+    ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:3000 ws://localhost:3000; img-src 'self' data:;"
+    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self';";
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
+
   const startUrl = isDev
     ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../build/index.html')}`;
+
+  // Hardening: blokuj otwieranie nowych okien i nawigację poza aplikację.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Linki zewnętrzne otwieraj w domyślnej przeglądarce systemowej.
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
 
   mainWindow.loadURL(startUrl);
 
@@ -79,26 +102,14 @@ function createWindow() {
   });
 }
 
-// Start: okno + migracje DB + inicjalizacja managerów
+// Start: okno + uruchomienie control plane (migracje, journal, recovery, LLM).
 app.whenReady().then(async () => {
   try {
-    await migrationManager.runMigrations();
-    logger.info('Migrations executed successfully');
-
-    // Wczytaj i zdeszyfruj klucz API dla LLM
-    const apiKeySetting = await settingsRepo.get('global', 'llm.apiKey');
-    // settingsRepo.get() returns the value directly, not an object
-    const apiKey = apiKeySetting ? decrypt(apiKeySetting) : null;
-    if (!apiKey) {
-      logger.warn('OpenAI API Key is not set in settings.');
-    }
-
-    // Zainicjalizuj LLMManager z kluczem API
-    llmManager = new LLMManager({ logger, serverManager, apiKey });
+    await appService.start();
+    llmManager = appService.llmManager;
+    logger.info('Control plane uruchomiony (AppService)');
   } catch (error) {
-    logger.error('Failed to run migrations or initialize managers', error);
-    // Zainicjalizuj LLMManager bez klucza, jeśli wystąpi błąd
-    llmManager = new LLMManager({ logger, serverManager });
+    logger.error('Nie udało się uruchomić control plane', error);
   }
   createWindow();
 });
@@ -670,22 +681,61 @@ ipcMain.handle(
   wrapHandler(
     'llm:ask',
     async (
-      { prompt, serverId, autoExecute, sessionToken },
+      { prompt, serverId, autoExecute, dryRun, sessionToken },
       _event,
       context
     ) => {
-      const result = await llmManager.processAndExecutePrompt(
-        prompt,
-        serverId,
-        {
-          autoExecute,
-          appUserId: context.user ? context.user.id : null,
-        }
-      );
+      // Tryb jednowywołaniowy: buduje plan i — przy autoExecute — wykonuje
+      // WYŁĄCZNIE kroki autonomiczne (low/medium). Kroki wysokiego ryzyka i
+      // krytyczne nie są tu wykonywane — wymagają osobnego llm:executePlan z
+      // zatwierdzeniem per-krok (ochrona przed TOCTOU).
+      const result = await llmManager.processAndExecutePrompt(prompt, serverId, {
+        autoExecute: !!autoExecute,
+        dryRun: !!dryRun,
+        appUserId: context.user ? context.user.id : null,
+      });
       logger.logAction('LLM_ASK', {
         serverId,
-        autoExecute,
+        autoExecute: !!autoExecute,
+        dryRun: !!dryRun,
+        status: result.status,
         actorUserId: context.user ? context.user.id : null,
+      });
+      return result;
+    }
+  )
+);
+
+// LLM: wykonanie wcześniej zbudowanego planu z zatwierdzeniem per-krok.
+// Plan jest pinowany hashem (planHash) — wykonanie odmawia, jeśli plan zmienił
+// się od podglądu. Zatwierdzać kroki wysokiego ryzyka może tylko admin.
+ipcMain.handle(
+  'llm:executePlan',
+  wrapHandler(
+    'llm:executePlan',
+    async ({ serverId, planId, planHash, approvals, dryRun }, _event, context) => {
+      const isAdmin = context.user && context.user.role === ROLES.ADMIN;
+      // Zgody na kroki 'high' honorujemy tylko dla admina.
+      const effectiveApprovals = isAdmin ? approvals || [] : [];
+      const result = await llmManager.executePlan(serverId, planId, {
+        planHash,
+        approvals: effectiveApprovals,
+        dryRun: !!dryRun,
+        appUserId: context.user ? context.user.id : null,
+      });
+      await logger.logAuditLike({
+        actionType: 'LLM_PLAN_EXECUTE',
+        targetType: 'server',
+        targetId: serverId,
+        actorUserId: context.user ? context.user.id : null,
+        source: 'ui',
+        success: result.status !== 'blocked' && result.status !== 'partial_error',
+        details: {
+          planId,
+          status: result.status,
+          approvedSteps: effectiveApprovals.length,
+          dryRun: !!dryRun,
+        },
       });
       return result;
     }
@@ -712,6 +762,72 @@ ipcMain.handle(
       new Error('LLM report not implemented'),
       'NOT_IMPLEMENTED'
     );
+  })
+);
+
+// Środowisko: wykrywanie OS i inwentaryzacja (read-only).
+// Buduje executor związany z serwerem (z gwarancją połączenia).
+const makeServerExecutor = (serverId, context) => async (command) => {
+  if (!serverManager.isServerConnected(serverId)) {
+    await serverManager.connectToServer(serverId);
+  }
+  return serverManager.executeCommand(serverId, command, {
+    actorUserId: context.user ? context.user.id : null,
+    source: 'system',
+  });
+};
+
+ipcMain.handle(
+  'env:detectOS',
+  wrapHandler('env:detectOS', async ({ serverId }, _event, context) => {
+    const server = await serverManager.getServer(serverId);
+    const execute = makeServerExecutor(serverId, context);
+    const result = await osDetector.detectAndVerify(execute, server ? server.os : null);
+    await logger.logAuditLike({
+      actionType: 'ENV_DETECT_OS',
+      targetType: 'server',
+      targetId: serverId,
+      actorUserId: context.user ? context.user.id : null,
+      source: 'ui',
+      success: result.verified,
+      details: { os: result.os, mismatch: result.mismatch },
+    });
+    return result;
+  })
+);
+
+ipcMain.handle(
+  'env:collect',
+  wrapHandler('env:collect', async ({ serverId, anonymize }, _event, context) => {
+    const server = await serverManager.getServer(serverId);
+    const execute = makeServerExecutor(serverId, context);
+    const snapshot = await environmentCollector.collect({
+      execute,
+      server: server || { id: serverId },
+      os: server ? server.os : undefined,
+      serverId,
+      serviceManager,
+      userManager,
+      packageManager,
+    });
+    await logger.logAuditLike({
+      actionType: 'ENV_COLLECT',
+      targetType: 'server',
+      targetId: serverId,
+      actorUserId: context.user ? context.user.id : null,
+      source: 'ui',
+      success: true,
+      details: {
+        os: snapshot.os,
+        ports: snapshot.listeningPorts.length,
+        services: snapshot.services.length,
+      },
+    });
+    // Opcjonalnie zwróć zanonimizowaną wersję (np. do wysyłki do zewnętrznego LLM).
+    if (anonymize) {
+      return environmentCollector.anonymizeSnapshot(snapshot).anonymized;
+    }
+    return snapshot;
   })
 );
 
@@ -852,6 +968,21 @@ ipcMain.handle(
     if (newApiKey && llmManager) {
       llmManager.setApiKey(newApiKey);
       logger.info('LLM API key updated dynamically');
+    }
+
+    // Jeśli zmieniono konfigurację routingu LLM — przebuduj pipeline na żywo.
+    if (
+      llmManager &&
+      keys.some(
+        (k) => k === 'llm.provider' || k === 'llm.model' || k.startsWith('llm.local.') || k === 'llm.allowAnonymization' || k.startsWith('authority.')
+      )
+    ) {
+      try {
+        await appService.reloadLLMConfig();
+        logger.info('LLM routing config updated dynamically');
+      } catch (e) {
+        logger.error('Nie udało się zaktualizować konfiguracji routingu LLM', e);
+      }
     }
 
     await logger.logAuditLike({

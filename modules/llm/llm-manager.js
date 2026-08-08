@@ -15,28 +15,77 @@
 // - prywatna metoda _callProvider(modelPrompt) do integracji z realnym LLM
 // - możliwość zapisu historii do DB (LLMTask, LLMTaskResult, AuditLog) w przyszłości
 
-const LLMClient = require('./llm-client'); // istniejący klient (może być stub)
+const LLMRouter = require('./llm-router'); // router: wewnętrzny vs zewnętrzny LLM
 const TaskGenerator = require('./task-generator');
 const PromptProcessor = require('./prompt-processor');
+const crypto = require('crypto');
+const Orchestrator = require('./orchestrator');
+const { evaluateCommand } = require('./command-guard');
+const { planFromTasks, computePlanHash } = require('./plan-schema');
+const actionRegistry = require('../actions/action-registry');
+const authorityEngine = require('../policy/authority-engine');
+const DeferredScheduler = require('../agent/deferred-scheduler');
+const { verifyWithPolicy } = require('../agent/verifier');
+const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
+const { shQuote, winCmdArg, assertIdentifier } = require('../access/shell-escape');
 const llmTaskRepo = require('./llm-task-repo');
 const commandHistoryRepo = require('../history/command-history-repo');
 
 class LLMManager {
  constructor(config = {}) {
-   const { apiKey = null, logger = null, serverManager = null } = config;
+   const {
+     apiKey = null,
+     logger = null,
+     serverManager = null,
+     externalModel = undefined,
+     policy = undefined,
+     local = undefined,
+     allowAnonymization = undefined,
+     journal = null,
+     authorityPolicy = null,
+   } = config;
 
    this.logger = logger || new Logger('llm-manager.log');
-   this.apiKey = apiKey;
-   this.llmClient = new LLMClient(apiKey, this.logger);
-   this.taskGenerator = new TaskGenerator(this.llmClient, this.logger);
-   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+
+   // Trwały journal wykonania (idempotencja + odzyskiwanie po awarii).
+   this._journal = journal;
+
+   // Polityka autorytetu (z ustawień) — domyślna decyzja auto/approval.
+   this._authorityPolicy = authorityPolicy || {};
+
+   // Sleep dla retry/flapping w weryfikacji (wstrzykiwalny na potrzeby testów).
+   this._sleep = config.sleep || ((ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve()));
+
+   // Konfiguracja routingu LLM (trzymana, by móc rebuildować pipeline).
+   this._llmConfig = {
+     apiKey,
+     externalModel,
+     policy,
+     local,
+     allowAnonymization,
+   };
+
+   this._buildPipeline();
    this.serverManager = serverManager || new ServerManager(null, this.logger);
 
    // Repozytoria persistencji (singletons)
    this.llmTaskRepo = llmTaskRepo;
    this.commandHistoryRepo = commandHistoryRepo;
+
+   // Orchestrator: guardrail + dry-run + bramka zatwierdzania.
+   this.orchestrator = new Orchestrator({ logger: this.logger });
+
+   // Magazyn zbudowanych planów (pin pod zatwierdzanie / ochrona TOCTOU).
+   // planId -> { serverId, os, steps, planHash, summary, prompt, createdAt }
+   this._planStore = new Map();
+
+   // Scheduler odroczonego wykonania z prawem weta.
+   this._deferred = new DeferredScheduler({
+     logger: this.logger,
+     execute: (item) => this.executePlan(item.serverId, item.planId, item.options || {}),
+   });
 
    // In-memory historia dalej utrzymywana jako cache, ale źródłem prawdy jest DB.
    // Map: serverId -> [{ id, prompt, plan, tasks, executionResults, status, createdAt }]
@@ -44,143 +93,637 @@ class LLMManager {
  }
 
  /**
+  * Jedyny punkt wykonywania poleceń przez LLM. Każde polecenie przechodzi przez
+  * guardrail:
+  *  - 'critical' -> blokada (GUARD_BLOCKED),
+  *  - 'high'     -> wymaga approveHighRisk (NEEDS_APPROVAL),
+  *  - dryRun     -> zwraca podgląd bez wykonania.
+  * @param {number|string} serverId
+  * @param {string} command
+  * @param {Object} [opts] – { approveHighRisk, dryRun }
+  */
+ async _runGuardedCommand(serverId, command, opts = {}) {
+   const guard = evaluateCommand(command);
+
+   if (!guard.allowed) {
+     const err = new Error(
+       `Polecenie zablokowane przez guardrail: ${guard.violations.map((v) => v.reason).join(', ')}`
+     );
+     err.code = 'GUARD_BLOCKED';
+     err.guard = guard;
+     throw err;
+   }
+   if (guard.risk === 'high' && !opts.approveHighRisk) {
+     const err = new Error(
+       `Polecenie wysokiego ryzyka wymaga zatwierdzenia: ${guard.violations.map((v) => v.reason).join(', ')}`
+     );
+     err.code = 'NEEDS_APPROVAL';
+     err.guard = guard;
+     throw err;
+   }
+
+   if (opts.dryRun) {
+     return { dryRun: true, command, guard, stdout: '', stderr: '', code: 0 };
+   }
+
+   if (!this.serverManager.isServerConnected(serverId)) {
+     await this.serverManager.connectToServer(serverId);
+   }
+   return this.serverManager.executeCommand(serverId, command);
+ }
+
+ /** Buduje router LLM oraz zależne komponenty na podstawie this._llmConfig. */
+ _buildPipeline() {
+   const cfg = this._llmConfig;
+   this.apiKey = cfg.apiKey;
+   this.router = new LLMRouter({
+     logger: this.logger,
+     policy: cfg.policy,
+     allowAnonymization: cfg.allowAnonymization,
+     external: { apiKey: cfg.apiKey, model: cfg.externalModel },
+     local: cfg.local || {},
+   });
+   // Alias zachowany dla kompatybilności z istniejącym kodem.
+   this.llmClient = this.router;
+   this.taskGenerator = new TaskGenerator(this.router, this.logger);
+   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+ }
+
+ /**
   * Aktualizuje klucz API dla LLM. Używane gdy użytkownik zmienia klucz w ustawieniach.
   */
  setApiKey(newApiKey) {
-   this.apiKey = newApiKey;
-   this.llmClient = new LLMClient(newApiKey, this.logger);
-   this.taskGenerator = new TaskGenerator(this.llmClient, this.logger);
-   this.promptProcessor = new PromptProcessor(this.taskGenerator, this.logger);
+   this._llmConfig.apiKey = newApiKey;
+   this._buildPipeline();
    this.logger.info('API key updated in LLMManager');
+ }
+
+ /**
+  * Aktualizuje konfigurację routingu LLM (polityka, lokalny provider, model itp.).
+  * @param {Object} partial – pola: policy, externalModel, local, allowAnonymization
+  */
+ setLLMConfig(partial = {}) {
+   this._llmConfig = { ...this._llmConfig, ...partial };
+   this._buildPipeline();
+   this.logger.info('LLM config updated in LLMManager', {
+     policy: this._llmConfig.policy,
+   });
+ }
+
+ /** Zwraca status routingu/providerów (do UI/diagnostyki). */
+ getLLMStatus() {
+   return this.router.getStatus();
+ }
+
+ /** Ustawia politykę autorytetu (decyzje auto/approval) z ustawień. */
+ setAuthorityPolicy(policy) {
+   this._authorityPolicy = policy || {};
+   this.logger.info('Zaktualizowano politykę autorytetu');
+ }
+
+ /** Leniwie tworzy journal wykonania (SQLite lub in-memory fallback). */
+ _getJournal() {
+   if (!this._journal) {
+     this._journal = ExecutionJournal.createDefault();
+   }
+   return this._journal;
+ }
+
+ /** Wywołuje operację journala best-effort — awaria journala nie blokuje wykonania. */
+ async _journalSafe(fn) {
+   try {
+     return await fn();
+   } catch (err) {
+     this.logger.error('Błąd journala wykonania (kontynuuję)', err);
+     return null;
+   }
+ }
+
+ /**
+  * Uruchamia pomocnicze polecenie (weryfikacja/kompensacja) z guardrailem.
+  * Blokuje krytyczne; nie żurnaluje (to nie jest krok planu).
+  */
+ async _execGuardedRaw(serverId, command, os, appUserId) {
+   const g = evaluateCommand(command, { os });
+   if (!g.allowed) {
+     const e = new Error('Polecenie zablokowane przez guardrail'); e.code = 'GUARD_BLOCKED'; throw e;
+   }
+   if (!this.serverManager.isServerConnected(serverId)) {
+     await this.serverManager.connectToServer(serverId);
+   }
+   return this.serverManager.executeCommand(serverId, command, {
+     actorUserId: appUserId || null, source: 'llm',
+   });
+ }
+
+ /**
+  * Odzyskiwanie po awarii: kroki przerwane (status 'executing') trafiają do
+  * 'needs_verification' zamiast ślepego ponowienia. Zwraca listę takich kroków.
+  */
+ async recoverInterruptedPlans() {
+   try {
+     return await this._getJournal().recover();
+   } catch (err) {
+     this.logger.error('Błąd odzyskiwania journala wykonania', err);
+     return [];
+   }
+ }
+
+ /**
+  * Read-back: dla kroków 'needs_verification' (przerwanych awarią) uruchamia ich
+  * postcondition `verify`, by ustalić, czy faktycznie się wykonały — BEZ ślepego
+  * ponawiania samej operacji. Krok z udaną weryfikacją → 'done'; pozostałe
+  * (brak verify, błąd połączenia, verify != 0) zostają 'needs_verification' do
+  * ręcznej decyzji. Best-effort i bezpieczne (read-only verify).
+  * @returns {Promise<{checked:number, confirmedDone:number, unresolved:number}>}
+  */
+ async verifyInterruptedSteps() {
+   const journal = this._getJournal();
+   let rows = [];
+   try {
+     rows = await journal.listNeedsVerification();
+   } catch (err) {
+     this.logger.error('Nie można odczytać kroków do weryfikacji', err);
+     return { checked: 0, confirmedDone: 0, unresolved: 0 };
+   }
+
+   let confirmedDone = 0;
+   let unresolved = 0;
+   for (const row of rows) {
+     const verify = row.verify;
+     const serverId = row.server_id;
+     // Bez polecenia weryfikującego albo bez serwera — nie ryzykujemy; zostawiamy.
+     if (!verify || serverId == null) {
+       unresolved++;
+       continue;
+     }
+     try {
+       const res = await this._execGuardedRaw(serverId, verify, null, null);
+       if (res && (res.code === 0 || res.code === undefined)) {
+         await this._journalSafe(() => journal.markVerifiedDone(row.plan_id, row.step_id));
+         confirmedDone++;
+       } else {
+         unresolved++;
+       }
+     } catch (err) {
+       // Serwer niedostępny / guard / inny błąd — NIE ponawiamy operacji.
+       this.logger.warn('Read-back nierozstrzygnięty (krok zostaje do weryfikacji)', {
+         planId: row.plan_id, stepId: row.step_id, reason: err.message,
+       });
+       unresolved++;
+     }
+   }
+   return { checked: rows.length, confirmedDone, unresolved };
+ }
+
+ /**
+  * Wykonuje plan AUTONOMICZNIE wg decyzji silnika autorytetu: kroki AUTONOMOUS
+  * i NOTIFY wykonują się samodzielnie (auto-zatwierdzone), APPROVAL czekają na
+  * administratora, a FORBIDDEN/critical są blokowane. Realizuje regułę „rób sam,
+  * pytaj tylko o destrukcyjne/niebezpieczne".
+  * @param {number|string} serverId
+  * @param {string} planId
+  * @param {Object} options – { planHash, dryRun, stopOnError, appUserId, preconditionProvider }
+  * @returns {Promise<{planId, status, results, autonomy:{autoApproved,notify,pendingApproval}}>}
+  */
+ async executeAutonomously(serverId, planId, options = {}) {
+   const stored = this._planStore.get(planId);
+   if (!stored) { const e = new Error('Plan nie istnieje lub wygasł'); e.code = 'PLAN_NOT_FOUND'; throw e; }
+
+   const autoApproved = [];
+   const notify = [];
+   const pendingApproval = [];
+   for (const s of stored.steps) {
+     const a = s.authority || 'APPROVAL';
+     if (a === 'AUTONOMOUS' || a === 'NOTIFY') autoApproved.push(s.id);
+     if (a === 'NOTIFY') notify.push(s.id);
+     if (a === 'APPROVAL') pendingApproval.push(s.id);
+   }
+
+   const result = await this.executePlan(serverId, planId, {
+     planHash: options.planHash || stored.planHash,
+     approvals: autoApproved, // autorytet jest źródłem auto-zgody (nie guard.sudo)
+     dryRun: options.dryRun,
+     stopOnError: options.stopOnError !== false,
+     appUserId: options.appUserId,
+     preconditionProvider: options.preconditionProvider,
+   });
+
+   if (notify.length) {
+     await this.logger.logAuditLike({
+       actionType: 'LLM_AUTONOMOUS_NOTIFY',
+       targetType: 'server', targetId: serverId, source: 'system', success: true,
+       details: { planId, notify },
+     });
+   }
+
+   return { ...result, autonomy: { autoApproved, notify, pendingApproval } };
+ }
+
+ /**
+  * Planuje ODROCZONE wykonanie planu z prawem weta: po `delayMs` plan zostanie
+  * wykonany (executePlan), o ile nie zostanie wcześniej zawetowany.
+  * @returns {{deferredId, fireAt, status}}
+  */
+ scheduleDeferredExecution(serverId, planId, options = {}) {
+   const { delayMs = 0, planHash, approvals, appUserId } = options;
+   return this._deferred.schedule(
+     { serverId, planId, options: { planHash, approvals, appUserId } },
+     delayMs
+   );
+ }
+
+ /** Weto odroczonego wykonania (jeśli jeszcze nie wystartowało). */
+ vetoDeferredExecution(deferredId, reason = null) {
+   const ok = this._deferred.veto(deferredId, reason);
+   return { vetoed: ok, deferredId };
+ }
+
+ /** Lista odroczonych wykonań. */
+ listDeferredExecutions() {
+   return this._deferred.list();
  }
 
   // --- Public API ---
 
   /**
-   * Główna metoda orchestration.
-   * @param {string} prompt
-   * @param {number|string} serverId
-   * @param {Object} options
-   *  - autoExecute?: boolean (default: true)
-   *  - stopOnError?: boolean (default: true)
-   * @returns {Promise<{plan: string, tasks: Array, executionResults: Array, status: string}>}
+   * Buduje plan wykonania z oceną ryzyka, BEZ wykonywania.
+   * Każdy krok jest rozstrzygany do konkretnego polecenia (podgląd == wykonanie),
+   * oceniany guardrailem i zapisywany w magazynie planów pod stabilnym hashem
+   * (pin pod zatwierdzanie — ochrona przed TOCTOU).
+   * @returns {Promise<{planId,planHash,summary,steps,maxRisk,requiresApproval,hasBlocked}>}
    */
-  async processAndExecutePrompt(prompt, serverId, options = {}) {
-    const { autoExecute = true, stopOnError = true } = options;
-
+  async buildPlan(prompt, serverId, options = {}) {
     if (!prompt || String(prompt).trim().length === 0) {
       throw new Error('Prompt nie może być pusty');
     }
-
     const serverConfig = await this.getServerConfig(serverId);
     if (!serverConfig) {
       throw new Error(`Serwer ${serverId} nie istnieje lub nie jest zarejestrowany`);
     }
+    const validation = this.promptProcessor.validatePrompt(prompt);
+    if (!validation.isValid) {
+      throw new Error(`Prompt nieprawidłowy: ${validation.issues.join(', ')}`);
+    }
 
-    try {
-      this.logger.logAction('LLM_PROMPT_RECEIVED', {
-        serverId,
-        snippet: prompt.slice(0, 200),
-      });
+    this.logger.logAction('LLM_PROMPT_RECEIVED', { serverId, snippet: prompt.slice(0, 200) });
 
-      // 1. Walidacja / wstępne przetwarzanie
-      const validation = this.promptProcessor.validatePrompt(prompt);
-      if (!validation.isValid) {
-        throw new Error(
-          `Prompt nieprawidłowy: ${validation.issues.join(', ')}`
-        );
+    const { plan, tasks } = await this._buildPlanAndTasks(prompt, serverConfig);
+    return this._assemblePlan(serverId, serverConfig, plan, tasks, options);
+  }
+
+  /**
+   * Buduje plan DETERMINISTYCZNIE z gotowych zadań (bez LLM) — np. remediacja
+   * dryfu względem stanu pożądanego. Te same gwarancje co buildPlan: typed
+   * actions, guardrail, autorytet, hash, magazyn.
+   * @param {Array} tasks
+   * @param {string} summary
+   * @param {number|string} serverId
+   * @param {Object} [options]
+   */
+  async buildPlanFromTasks(tasks, summary, serverId, options = {}) {
+    const serverConfig = await this.getServerConfig(serverId);
+    if (!serverConfig) {
+      throw new Error(`Serwer ${serverId} nie istnieje lub nie jest zarejestrowany`);
+    }
+    return this._assemblePlan(serverId, serverConfig, summary || 'plan', tasks || [], options);
+  }
+
+  /**
+   * Wspólny montaż planu: rozstrzygnięcie kroków (typed actions/raw), guardrail,
+   * decyzja autorytetu, hash, opcjonalna prekondycja i zapis do magazynu.
+   * @private
+   */
+  async _assemblePlan(serverId, serverConfig, summary, tasks, options = {}) {
+    const os = (serverConfig.os || 'linux').toLowerCase();
+
+    // Rozstrzygnij każdy krok do konkretnego polecenia (to, co realnie zostanie
+    // wykonane), aby podgląd, hash i wykonanie były identyczne. Typed actions
+    // (usługa/pakiet) zyskują automatycznie verify + compensation + metadane.
+    const typedOnly = !!options.typedOnly;
+    const resolved = [];
+    let rejectedRaw = 0;
+    planFromTasks(tasks, summary).steps.forEach((s, i) => {
+      const id = s.id || `step_${i + 1}`;
+      const r = actionRegistry.resolve({ ...s, id }, os);
+      if (r.typed) {
+        resolved.push({ ...r.step, id });
+        return;
       }
-
-      // 2. Zbudowanie planu i listy zadań (mockowane lokalnie)
-      const { plan, tasks } = await this._buildPlanAndTasks(
-        prompt,
-        serverConfig
+      // Surowe polecenie — w trybie autonomicznym (typedOnly) niedozwolone.
+      if (typedOnly) {
+        rejectedRaw++;
+        return;
+      }
+      const command = this._resolveStepCommand(s, os);
+      if (s.type === 'noop' || command) {
+        resolved.push({ ...s, id, os, command: command || undefined });
+      }
+    });
+    if (typedOnly && rejectedRaw > 0) {
+      this.logger.warn(
+        `Tryb typedOnly: odrzucono ${rejectedRaw} kroków bez typed-action (surowe polecenia).`
       );
+    }
+
+    const guarded = this.orchestrator.buildPlan({ summary, steps: resolved });
+
+    // Decyzja autorytetu per krok (AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN) na
+    // podstawie guardraila + metadanych typed actions + środowiska + polityki.
+    const authorityCtx = { environment: serverConfig.environment };
+    const policy = options.policy || this._authorityPolicy || {};
+    const decided = authorityEngine.evaluatePlan(guarded.steps, authorityCtx, policy);
+    guarded.steps = decided.steps;
+    const maxAuthority = decided.maxAuthority;
+
+    const planHash = computePlanHash(guarded.steps);
+    const planId = 'plan_' + Math.random().toString(36).slice(2, 10);
+
+    // Opcjonalny pin prekondycji stanu serwera (aprobata wygasa, gdy stan się
+    // zmieni między zatwierdzeniem a wykonaniem). Domyślnie wyłączony.
+    let preconditionHash = null;
+    if (options.capturePrecondition || options.preconditionProvider) {
+      try {
+        preconditionHash = await this._computePrecondition(serverId, options);
+      } catch (e) {
+        this.logger.warn('Nie udało się pobrać prekondycji stanu', { error: e.message });
+      }
+    }
+
+    this._planStore.set(planId, {
+      planId, serverId, os, environment: serverConfig.environment, prompt: summary, summary,
+      steps: guarded.steps, planHash, preconditionHash, createdAt: new Date().toISOString(),
+    });
+
+    return {
+      planId, planHash, preconditionHash, summary, steps: guarded.steps,
+      maxRisk: guarded.maxRisk,
+      maxAuthority,
+      requiresApproval: guarded.requiresApproval,
+      hasBlocked: guarded.hasBlocked,
+      rejectedRaw,
+    };
+  }
+
+  /** Liczy hash prekondycji (z wstrzykniętego providera lub fingerprintu serwera). */
+  async _computePrecondition(serverId, options = {}) {
+    let value;
+    if (typeof options.preconditionProvider === 'function') {
+      value = await options.preconditionProvider(serverId);
+    } else {
+      value = await this._serverStateFingerprint(serverId);
+    }
+    const str = typeof value === 'string' ? value : JSON.stringify(value);
+    return crypto.createHash('sha256').update(str).digest('hex');
+  }
+
+  /** Lekki odcisk stanu serwera (read-only): OS/kernel + hostname. */
+  async _serverStateFingerprint(serverId) {
+    const exec = async (cmd) => {
+      try {
+        if (!this.serverManager.isServerConnected(serverId)) {
+          await this.serverManager.connectToServer(serverId);
+        }
+        const r = await this.serverManager.executeCommand(serverId, cmd, { source: 'system' });
+        return (r && r.stdout) || '';
+      } catch {
+        return '';
+      }
+    };
+    const parts = [];
+    parts.push(await exec('uname -a 2>/dev/null || ver'));
+    parts.push(await exec('hostname'));
+    return parts.join('\n');
+  }
+
+  /**
+   * Wykonuje WCZEŚNIEJ zbudowany plan (po planId), weryfikując, że nie zmienił
+   * się od zatwierdzenia (planHash). Kroki 'high' wykonują się tylko, gdy ich id
+   * jest w `approvals` (zgoda per-krok); 'critical' są zawsze blokowane.
+   * @param {number|string} serverId
+   * @param {string} planId
+   * @param {Object} options – { planHash, approvals, dryRun, stopOnError, appUserId }
+   */
+  async executePlan(serverId, planId, options = {}) {
+    const stored = this._planStore.get(planId);
+    if (!stored) {
+      const e = new Error('Plan nie istnieje lub wygasł'); e.code = 'PLAN_NOT_FOUND'; throw e;
+    }
+    if (String(stored.serverId) !== String(serverId)) {
+      const e = new Error('Plan nie pasuje do serwera'); e.code = 'PLAN_SERVER_MISMATCH'; throw e;
+    }
+    if (options.planHash && options.planHash !== stored.planHash) {
+      const e = new Error('Plan zmienił się od zatwierdzenia — odśwież i zatwierdź ponownie');
+      e.code = 'PLAN_CHANGED'; throw e;
+    }
+    // Prekondycja stanu: aprobata wygasa, jeśli stan serwera zmienił się od
+    // zbudowania planu (chyba że dry-run lub jawne pominięcie).
+    if (stored.preconditionHash && !options.dryRun && !options.skipPreconditionCheck) {
+      let current = null;
+      try {
+        current = await this._computePrecondition(serverId, options);
+      } catch (e) {
+        this.logger.warn('Nie można zweryfikować prekondycji stanu', { error: e.message });
+      }
+      if (current !== stored.preconditionHash) {
+        const e = new Error('Stan serwera zmienił się od zatwierdzenia — wymagane ponowne zatwierdzenie');
+        e.code = 'PLAN_STATE_CHANGED'; throw e;
+      }
+    }
+
+    const approvals = Array.isArray(options.approvals)
+      ? options.approvals
+      : options.approvals && typeof options.approvals === 'object'
+      ? Object.keys(options.approvals).filter((k) => options.approvals[k])
+      : [];
+    const os = stored.os;
+    const journal = this._getJournal();
+    const dryRun = !!options.dryRun;
+
+    // Zarejestruj kroki w journalu (idempotentnie) — chyba że dry-run.
+    if (!dryRun) {
+      await this._journalSafe(() =>
+        journal.startRun({ planId, planHash: stored.planHash, serverId, steps: stored.steps })
+      );
+    }
+
+    const executor = async (step) => {
+      // Idempotencja: krok już wykonany (np. wznowienie) nie powtarza się.
+      if (!dryRun && (await this._journalSafe(() => journal.isStepDone(planId, step.id)))) {
+        return { skipped: true, reason: 'idempotent: krok już wykonany' };
+      }
+      if (!dryRun) await this._journalSafe(() => journal.beginStep(planId, step.id));
+
+      // Defense-in-depth: krytyczne polecenie nigdy nie przechodzi.
+      const g = evaluateCommand(step.command, { os });
+      if (!g.allowed) {
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'error', error: 'GUARD_BLOCKED' })
+          );
+        }
+        const e = new Error('Polecenie zablokowane przez guardrail'); e.code = 'GUARD_BLOCKED'; throw e;
+      }
+      if (!this.serverManager.isServerConnected(serverId)) {
+        await this.serverManager.connectToServer(serverId);
+      }
+      try {
+        const res = await this.serverManager.executeCommand(serverId, step.command, {
+          actorUserId: options.appUserId || null, source: 'llm',
+        });
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'done', result: res })
+          );
+        }
+        return res;
+      } catch (err) {
+        if (!dryRun) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, step.id, { status: 'error', error: err.message })
+          );
+        }
+        throw err;
+      }
+    };
+
+    // Weryfikacja po wykonaniu (postcondition): polecenie `verify` z kodem 0 = OK.
+    const verifier = async (step) => {
+      if (!step.verify) return { ok: true };
+      // Retry/timeout/flapping wg polityki (per krok lub globalnie); domyślnie 1 próba.
+      const policy = step.verifyPolicy || options.verifyPolicy || {};
+      return verifyWithPolicy({
+        command: step.verify,
+        run: (cmd) => this._execGuardedRaw(serverId, cmd, os, options.appUserId),
+        sleep: this._sleep,
+        policy,
+      });
+    };
+
+    // Kompensacja (rollback) kroku w trybie saga.
+    const compensator = async (step) => {
+      if (!step.compensation) return;
+      await this._execGuardedRaw(serverId, step.compensation, os, options.appUserId);
+    };
+
+    // Saga aktywna, gdy którykolwiek krok deklaruje kompensację.
+    const saga = !dryRun && stored.steps.some((s) => s.compensation);
+
+    const { status, results } = await this.orchestrator.execute(
+      { summary: stored.summary, steps: stored.steps },
+      {
+        executor,
+        approvals,
+        dryRun,
+        stopOnError: options.stopOnError !== false,
+        os,
+        verifier,
+        compensator,
+        saga,
+      }
+    );
+
+    // Odzwierciedl w journalu kroki nie wykonane oraz wyniki weryfikacji/kompensacji.
+    if (!dryRun) {
+      for (const r of results) {
+        let jStatus = null;
+        if (r.compensated) jStatus = 'compensated';
+        else if (r.status === 'verify_failed') jStatus = 'verify_failed';
+        else if (r.status === 'needs_approval') jStatus = 'pending';
+        else if (['blocked', 'skipped'].includes(r.status)) jStatus = r.status;
+        if (jStatus) {
+          await this._journalSafe(() =>
+            journal.completeStep(planId, r.id, { status: jStatus, error: r.error || null })
+          );
+        }
+      }
+    }
+
+    await this._persistExecution(serverId, {
+      prompt: stored.prompt, plan: stored.summary, status, results, appUserId: options.appUserId,
+    });
+    this.logger.logAction('LLM_PLAN_EXECUTED', { serverId, planId, status, approvals: approvals.length });
+
+    // Usuwamy plan z magazynu tylko, gdy nie ma kroków oczekujących na zgodę
+    // (inaczej zachowujemy go, by można było dokończyć po zatwierdzeniu).
+    const hasPending = results.some((r) => r.status === 'needs_approval');
+    if (!options.dryRun && !hasPending) this._planStore.delete(planId);
+    return { planId, planHash: stored.planHash, status, results };
+  }
+
+  /**
+   * Zgodny wstecznie wrapper. Buduje plan i — przy autoExecute — wykonuje przez
+   * executePlan. Bezpieczeństwo: tryb jednowywołaniowy NIE zatwierdza kroków
+   * 'high' (brak zgody per-krok) — wracają jako needs_approval, a 'critical' jako
+   * blocked. Pełne zatwierdzanie odbywa się przez executePlan z `approvals`.
+   * @returns {Promise<{planId,planHash,plan,guardedPlan,tasks,executionResults,status}>}
+   */
+  async processAndExecutePrompt(prompt, serverId, options = {}) {
+    const { autoExecute = false, stopOnError = true, dryRun = false } = options;
+    try {
+      const built = await this.buildPlan(prompt, serverId, options);
 
       let executionResults = [];
-      let status = 'planned';
+      let status = built.hasBlocked
+        ? 'blocked'
+        : built.requiresApproval
+        ? 'needs_approval'
+        : 'planned';
 
-      // 3. Opcjonalne wykonanie planu
-      if (autoExecute && tasks.length > 0) {
-        executionResults = await this._executeTasksInternal(serverId, tasks, {
-          stopOnError,
+      if (autoExecute && built.steps.length > 0) {
+        const exec = await this.executePlan(serverId, built.planId, {
+          planHash: built.planHash, dryRun, stopOnError, appUserId: options.appUserId,
         });
-        status =
-          executionResults.some((r) => r.status === 'error') && stopOnError
-            ? 'partial_error'
-            : 'executed';
+        executionResults = exec.results;
+        status = exec.status;
       }
 
-     // Persistencja zadania LLM
-     const llmTask = await this.llmTaskRepo.insertTask({
-       serverId,
-       appUserId: options.appUserId || null,
-       prompt,
-       plan,
-       status,
-       autoExecute,
-     });
-
-     // Zapis wyników poszczególnych kroków
-     let stepIndex = 0;
-     for (const exec of executionResults) {
-       await this.llmTaskRepo.insertResult({
-         llmTaskId: llmTask.id,
-         stepIndex: stepIndex++,
-         taskType: exec.type || null,
-         description: exec.description || null,
-         command: exec.command || null,
-         status: exec.status || 'success',
-         result: exec.result ? JSON.stringify(exec.result) : null,
-         errorMessage: exec.error || null,
-       });
-
-       // Równoległy CommandHistory dla komend
-       if (exec.command) {
-         await this.commandHistoryRepo.insert({
-           serverId,
-           appUserId: options.appUserId || null,
-           source: 'llm',
-           command: exec.command,
-           result: exec.result ? JSON.stringify(exec.result) : null,
-           exitCode:
-             typeof exec.exitCode === 'number'
-               ? exec.exitCode
-               : exec.status === 'error'
-               ? 1
-               : 0,
-         });
-       }
-     }
-
-     const entry = {
-       id: llmTask.id,
-       serverId,
-       prompt,
-       plan,
-       tasks,
-       executionResults,
-       status,
-       createdAt: llmTask.created_at || new Date().toISOString(),
-     };
-
-     this.addToTaskHistory(serverId, entry);
-
       this.logger.logAction('LLM_PROMPT_PROCESSED', {
-        serverId,
-        status,
-        tasks: tasks.length,
+        serverId, status, autoExecute, maxRisk: built.maxRisk, steps: built.steps.length,
       });
 
       return {
-        plan,
-        tasks,
-        executionResults,
-        status,
+        planId: built.planId, planHash: built.planHash, plan: built.summary,
+        guardedPlan: built, tasks: built.steps, executionResults, status,
       };
     } catch (error) {
       this.logger.error('Błąd processAndExecutePrompt', error, { serverId });
       throw error;
+    }
+  }
+
+  /**
+   * Persistencja wyników wykonania planu (llm_tasks + llm_task_results + history).
+   */
+  async _persistExecution(serverId, { prompt, plan, status, results = [], appUserId = null }) {
+    try {
+      const llmTask = await this.llmTaskRepo.insertTask({
+        serverId, appUserId: appUserId || null, prompt, plan, status, autoExecute: true,
+      });
+      let stepIndex = 0;
+      for (const exec of results) {
+        await this.llmTaskRepo.insertResult({
+          llmTaskId: llmTask.id, stepIndex: stepIndex++, taskType: exec.type || null,
+          description: exec.description || null, command: exec.command || null,
+          status: exec.status || 'success',
+          result: exec.result ? JSON.stringify(exec.result) : null,
+          errorMessage: exec.error || null,
+        });
+        if (exec.command && exec.status !== 'dry_run') {
+          await this.commandHistoryRepo.insert({
+            serverId, appUserId: appUserId || null, source: 'llm', command: exec.command,
+            result: exec.result ? JSON.stringify(exec.result) : null,
+            exitCode: typeof (exec.result && exec.result.code) === 'number'
+              ? exec.result.code : exec.status === 'error' ? 1 : 0,
+          });
+        }
+      }
+      this.addToTaskHistory(serverId, {
+        id: llmTask.id, serverId, prompt, plan, executionResults: results, status,
+        createdAt: llmTask.created_at || new Date().toISOString(),
+      });
+    } catch (err) {
+      this.logger.error('Błąd persistencji wykonania planu', err, { serverId });
     }
   }
 
@@ -327,147 +870,58 @@ class LLMManager {
   }
 
   /**
-   * Wykonuje listę zadań na serwerze z użyciem ServerManager/ServiceManager.
-   * tasks: [{ id?, type, description, command?, serviceName?, action? }]
+   * Rozstrzyga krok planu do konkretnego polecenia powłoki (lub null dla noop /
+   * kroków niewykonywalnych). Wartości użytkownika są escapowane / walidowane
+   * (anty-injection). Wynik jest tym, co realnie zostanie wykonane — dzięki czemu
+   * podgląd, hash i wykonanie są identyczne.
+   * @param {Object} step
+   * @param {string} os
+   * @returns {string|null}
    */
-  async _executeTasksInternal(serverId, tasks, options = {}) {
-    const { stopOnError = true } = options;
-    const results = [];
+  _resolveStepCommand(step, os) {
+    const type = (step.type || '').toLowerCase();
+    const isWin = String(os).toLowerCase() === 'windows';
 
-    for (const task of tasks) {
-      const taskId = task.id || generateId();
-      try {
-        const execResult = await this._executeSingleTask(serverId, task);
-        const entry = {
-          taskId,
-          type: task.type,
-          description: task.description,
-          status: 'success',
-          result: execResult,
-          timestamp: new Date().toISOString(),
-        };
-        results.push(entry);
-        this.addToTaskHistory(serverId, {
-          id: taskId,
-          prompt: null,
-          plan: null,
-          tasks: [task],
-          executionResults: [entry],
-          status: 'executed',
-        });
-      } catch (error) {
-        const entry = {
-          taskId,
-          type: task.type,
-          description: task.description,
-          status: 'error',
-          error: error.message,
-          timestamp: new Date().toISOString(),
-        };
-        results.push(entry);
-        this.addToTaskHistory(serverId, {
-          id: taskId,
-          prompt: null,
-          plan: null,
-          tasks: [task],
-          executionResults: [entry],
-          status: 'error',
-        });
+    if (type === 'noop') return null;
 
-        this.logger.error(
-          `Błąd wykonania zadania LLMTask na serwerze ${serverId}`,
-          error,
-          { task }
-        );
-
-        if (stopOnError) {
-          break;
-        }
-      }
+    if (type === 'command') {
+      return typeof step.command === 'string' && step.command.trim()
+        ? step.command.trim()
+        : null;
     }
 
-    return results;
-  }
-
-  /**
-   * Mapuje pojedyncze zadanie na konkretne operacje managerów.
-   */
-  async _executeSingleTask(serverId, task) {
-    const type = (task.type || '').toLowerCase();
-
-    // Obsługa komend shell
-    if (type === 'command' && task.command) {
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
-      }
-      return this.serverManager.executeCommand(serverId, task.command);
-    }
-
-    // Obsługa usług
     if (type === 'service') {
-      const action = (task.action || '').toLowerCase();
-      const serviceName = task.serviceName || task.name;
-      if (!serviceName) {
-        throw new Error('Brak serviceName w zadaniu typu service');
+      const serviceName = step.serviceName || step.name;
+      const action = (step.action || '').toLowerCase();
+      if (!serviceName) return null;
+      assertIdentifier(serviceName, 'serviceName');
+      if (isWin) {
+        if (action === 'restart') {
+          return `sc stop ${winCmdArg(serviceName)} && sc start ${winCmdArg(serviceName)}`;
+        }
+        if (action === 'start' || action === 'stop') {
+          return `sc ${action} ${winCmdArg(serviceName)}`;
+        }
+        return null;
       }
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
+      if (['start', 'stop', 'restart', 'reload', 'enable', 'disable'].includes(action)) {
+        return `sudo systemctl ${action} ${shQuote(serviceName)}`;
       }
-
-      switch (action) {
-        case 'start':
-          return this.serverManager.manageServices(serverId, 'start', {
-            serviceName,
-          });
-        case 'stop':
-          return this.serverManager.manageServices(serverId, 'stop', {
-            serviceName,
-          });
-        case 'restart':
-          return this.serverManager.manageServices(serverId, 'restart', {
-            serviceName,
-          });
-        default:
-          throw new Error(`Nieobsługwana akcja usługi: ${action}`);
-      }
+      return null;
     }
 
-    // Obsługa instalacji pakietów
     if (type === 'installation' || type === 'package') {
-      const packageName = task.app || task.packageName || task.name;
-      if (!packageName) {
-        throw new Error('Brak nazwy pakietu w zadaniu typu installation');
-      }
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
-      }
-      // Generuj komendę instalacji w zależności od OS
-      const server = await this.serverManager.getServer(serverId);
-      const os = (server?.os || 'linux').toLowerCase();
-      let installCmd;
-      if (os === 'windows') {
-        installCmd = `choco install ${packageName} -y`;
-      } else {
-        // Linux - sprawdź dostępny menedżer pakietów
-        installCmd = `if command -v apt-get &> /dev/null; then sudo apt-get install -y ${packageName}; elif command -v yum &> /dev/null; then sudo yum install -y ${packageName}; elif command -v dnf &> /dev/null; then sudo dnf install -y ${packageName}; else echo "Nieznany menedżer pakietów"; exit 1; fi`;
-      }
-      this.logger.info(`Wykonywanie komendy instalacji: ${installCmd}`);
-      return this.serverManager.executeCommand(serverId, installCmd);
+      const packageName = step.packageName || step.app || step.name;
+      if (!packageName) return null;
+      if (isWin) return `choco install ${winCmdArg(packageName)} -y`;
+      const pkg = shQuote(packageName);
+      return `if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y ${pkg}; elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y ${pkg}; elif command -v yum >/dev/null 2>&1; then sudo yum install -y ${pkg}; else echo "Nieznany menedżer pakietów"; exit 1; fi`;
     }
 
-    // Inne typy można rozbudować (user/share itp.)
-    // TODO: mapowanie typów 'user', 'share' itd.
-
-    // Jeśli jest konkretna komenda, wykonaj ją
-    if (task.command) {
-      if (!this.serverManager.isServerConnected(serverId)) {
-        await this.serverManager.connectToServer(serverId);
-      }
-      this.logger.info(`Wykonywanie komendy: ${task.command}`);
-      return this.serverManager.executeCommand(serverId, task.command);
-    }
-
-    throw new Error(`Nieobsługiwany typ zadania: ${task.type}. Brak komendy do wykonania.`);
+    // Fallback: surowa komenda, jeśli krok ją zawiera.
+    return typeof step.command === 'string' && step.command.trim()
+      ? step.command.trim()
+      : null;
   }
 
   // --- Punkty rozszerzeń pod realnego providera LLM ---

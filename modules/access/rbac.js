@@ -53,6 +53,10 @@ const PERMISSIONS = {
   'console:execute': [ROLES.ADMIN, ROLES.OPERATOR], // readonly nie może wykonywać
   'history:commands:list': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
 
+  // Środowisko: wykrywanie OS i inwentaryzacja (read-only)
+  'env:detectOS': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+  'env:collect': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+
   // Credentials
   'credentials:list': [ROLES.ADMIN, ROLES.OPERATOR],
   'credentials:get': [ROLES.ADMIN, ROLES.OPERATOR],
@@ -63,7 +67,17 @@ const PERMISSIONS = {
 
   // LLM
   'llm:ask': [ROLES.ADMIN, ROLES.OPERATOR], // autoExecute ograniczymy dodatkowo w logice
+  'llm:executePlan': [ROLES.ADMIN, ROLES.OPERATOR], // zatwierdzanie kroków high tylko admin (w logice)
+  'llm:executeAutonomously': [ROLES.ADMIN, ROLES.OPERATOR],
+  'llm:scheduleDeferred': [ROLES.ADMIN, ROLES.OPERATOR],
+  'llm:vetoDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY], // weto (zatrzymanie) bezpieczne dla każdego
+  'llm:listDeferred': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
   'llm:history': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
+
+  // Pętla agenta (ciągłe utrzymanie) — sterowanie tylko admin; status szerzej
+  'agent:start': [ROLES.ADMIN],
+  'agent:stop': [ROLES.ADMIN, ROLES.OPERATOR], // zatrzymanie (kill-switch) także operator
+  'agent:status': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
   'llm:report': [ROLES.ADMIN, ROLES.OPERATOR, ROLES.READONLY],
 
   // AppUsers zarządzanie

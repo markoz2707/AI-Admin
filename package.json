@@ -1,15 +1,28 @@
 {
   "name": "ai-admin",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Desktopowa aplikacja (Electron) do zarządzania serwerami przez SSH/WinRM/RDP z integracją LLM, managerem haseł i audytem.",
+  "main": "ui/electron-main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron ui/electron-main.js",
+    "start:service": "node service/headless.js",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
   },
-  "keywords": [],
+  "keywords": [
+    "electron",
+    "ssh",
+    "winrm",
+    "server-management",
+    "llm",
+    "password-manager"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "node-ssh": "^13.2.1",
     "openai": "^6.16.0",

@@ -84,12 +84,24 @@ const api = {
   },
 
   llm: {
-    ask: ({ prompt, serverId, includeContext, autoExecute }) =>
+    ask: ({ prompt, serverId, includeContext, autoExecute, approveHighRisk, dryRun }) =>
       ipcRenderer.invoke('llm:ask', {
         prompt,
         serverId,
         includeContext,
         autoExecute,
+        approveHighRisk,
+        dryRun,
+        sessionToken: currentSessionToken,
+      }),
+    // Wykonanie zatwierdzonego planu (z pinem hasha + zgodą per-krok).
+    executePlan: ({ serverId, planId, planHash, approvals, dryRun }) =>
+      ipcRenderer.invoke('llm:executePlan', {
+        serverId,
+        planId,
+        planHash,
+        approvals,
+        dryRun,
         sessionToken: currentSessionToken,
       }),
     history: (limit) =>
@@ -183,6 +195,21 @@ const api = {
         sessionToken: currentSessionToken,
         serverId,
         options,
+      }),
+  },
+
+  // Środowisko: wykrywanie OS i inwentaryzacja
+  env: {
+    detectOS: (serverId) =>
+      ipcRenderer.invoke('env:detectOS', {
+        sessionToken: currentSessionToken,
+        serverId,
+      }),
+    collect: (serverId, anonymize = false) =>
+      ipcRenderer.invoke('env:collect', {
+        sessionToken: currentSessionToken,
+        serverId,
+        anonymize,
       }),
   },
 };

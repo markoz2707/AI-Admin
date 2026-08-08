@@ -1,4 +1,9 @@
 const { AccessManager } = require('../access');
+const {
+  shQuote,
+  winCmdArg,
+  assertIdentifier,
+} = require('../access/shell-escape');
 
 /**
  * UserManager
@@ -45,10 +50,10 @@ class UserManager {
         
         let users = this._parseUsersOutput(passwdResult.stdout, os);
 
-        // обогащение информацией о группах
+        // wzbogacenie informacją o grupach
         for (let i = 0; i < users.length; i++) {
           const user = users[i];
-          const groupsCommand = `id -Gn ${user.username}`;
+          const groupsCommand = `id -Gn ${shQuote(user.username)}`;
           const groupsResult = await this.accessManager.executeCommand(serverId, groupsCommand);
           if (groupsResult.code === 0) {
             user.groups = groupsResult.stdout.trim().split(' ');
@@ -80,16 +85,18 @@ class UserManager {
     try {
       this.logger.info(`Dodawanie użytkownika ${username} na serwerze ${serverId}`);
 
+      assertIdentifier(username, 'username');
+
       let command;
       if (os === 'windows') {
-        command = `net user "${username}" "${password}" /add`;
+        command = `net user ${winCmdArg(username)} ${winCmdArg(password)} /add`;
         if (options.comment) {
-          command += ` /comment:"${options.comment}"`;
+          command += ` /comment:${winCmdArg(options.comment)}`;
         }
       } else if (os === 'linux') {
         const homeDir = options.homeDir || `/home/${username}`;
         const shell = options.shell || '/bin/bash';
-        command = `sudo useradd -m -d ${homeDir} -s ${shell} ${username} && echo "${username}:${password}" | sudo chpasswd`;
+        command = `sudo useradd -m -d ${shQuote(homeDir)} -s ${shQuote(shell)} ${shQuote(username)} && echo ${shQuote(`${username}:${password}`)} | sudo chpasswd`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -118,11 +125,13 @@ class UserManager {
     try {
       this.logger.info(`Usuwanie użytkownika ${username} z serwera ${serverId}`);
 
+      assertIdentifier(username, 'username');
+
       let command;
       if (os === 'windows') {
-        command = `net user "${username}" /delete`;
+        command = `net user ${winCmdArg(username)} /delete`;
       } else if (os === 'linux') {
-        command = `sudo userdel -r ${username}`;
+        command = `sudo userdel -r ${shQuote(username)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -152,11 +161,13 @@ class UserManager {
     try {
       this.logger.info(`Zmiana hasła użytkownika ${username} na serwerze ${serverId}`);
 
+      assertIdentifier(username, 'username');
+
       let command;
       if (os === 'windows') {
-        command = `net user "${username}" "${newPassword}"`;
+        command = `net user ${winCmdArg(username)} ${winCmdArg(newPassword)}`;
       } else if (os === 'linux') {
-        command = `echo "${username}:${newPassword}" | sudo chpasswd`;
+        command = `echo ${shQuote(`${username}:${newPassword}`)} | sudo chpasswd`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -186,11 +197,14 @@ class UserManager {
     try {
       this.logger.info(`Dodawanie użytkownika ${username} do grupy ${groupName} na serwerze ${serverId}`);
 
+      assertIdentifier(username, 'username');
+      assertIdentifier(groupName, 'groupName');
+
       let command;
       if (os === 'windows') {
-        command = `net localgroup "${groupName}" "${username}" /add`;
+        command = `net localgroup ${winCmdArg(groupName)} ${winCmdArg(username)} /add`;
       } else if (os === 'linux') {
-        command = `sudo usermod -a -G ${groupName} ${username}`;
+        command = `sudo usermod -a -G ${shQuote(groupName)} ${shQuote(username)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }
@@ -220,11 +234,14 @@ class UserManager {
     try {
       this.logger.info(`Usuwanie użytkownika ${username} z grupy ${groupName} na serwerze ${serverId}`);
 
+      assertIdentifier(username, 'username');
+      assertIdentifier(groupName, 'groupName');
+
       let command;
       if (os === 'windows') {
-        command = `net localgroup "${groupName}" "${username}" /delete`;
+        command = `net localgroup ${winCmdArg(groupName)} ${winCmdArg(username)} /delete`;
       } else if (os === 'linux') {
-        command = `sudo gpasswd -d ${username} ${groupName}`;
+        command = `sudo gpasswd -d ${shQuote(username)} ${shQuote(groupName)}`;
       } else {
         throw new Error(`Nieobsługiwany system operacyjny: ${os}`);
       }

@@ -1,4 +1,5 @@
 const LLMClient = require('./llm-client');
+const { sanitizeText, wrapUntrusted } = require('./perception-guard');
 
 class TaskGenerator {
   constructor(llmClient, logger = null) {
@@ -52,19 +53,28 @@ class TaskGenerator {
   buildTaskGenerationPrompt(serverConfig, installedApps, context) {
     const { serverId, os, type, host, hardware = {} } = serverConfig;
 
+    // Dane potencjalnie pochodzące ze zdalnego (niezaufanego) hosta — host i
+    // lista aplikacji — są opakowane jako DANE i pozbawione prób wstrzyknięcia,
+    // żeby nie sterowały planerem (obrona przed zatrutą percepcją).
+    const untrustedFacts = wrapUntrusted('zdalny serwer', {
+      host,
+      installedApps: installedApps.map((a) => ({
+        name: a.name,
+        version: a.version || 'nieznana',
+      })),
+    });
+
     return `
 Na podstawie następującej konfiguracji serwera i zainstalowanych aplikacji, zaproponuj logiczne następne zadania do wykonania:
 
-SERWER: ${serverId}
-SYSTEM OPERACYJNY: ${os}
-TYP POŁĄCZENIA: ${type}
-HOST: ${host}
-SPRZĘT: CPU: ${hardware.cpu || 'nieznany'}, RAM: ${hardware.ram || 'nieznany'}, DYSK: ${hardware.disk || 'nieznany'}
+SERWER: ${sanitizeText(String(serverId))}
+SYSTEM OPERACYJNY: ${sanitizeText(String(os))}
+TYP POŁĄCZENIA: ${sanitizeText(String(type))}
+SPRZĘT: CPU: ${sanitizeText(String(hardware.cpu || 'nieznany'))}, RAM: ${sanitizeText(String(hardware.ram || 'nieznany'))}, DYSK: ${sanitizeText(String(hardware.disk || 'nieznany'))}
 
-ZAINSTALOWANE APLIKACJE:
-${installedApps.map(app => `- ${app.name} (wersja: ${app.version || 'nieznana'})`).join('\n')}
+${untrustedFacts}
 
-KONTEKST DODATKOWY: ${context}
+KONTEKST DODATKOWY: ${sanitizeText(String(context || ''))}
 
 Zaproponuj 3-5 następnych zadań, które mogą być przydatne po instalacji tych aplikacji. Każde zadanie powinno zawierać:
 - Nazwa zadania

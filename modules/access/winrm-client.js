@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const Logger = require('./logger');
+const { psSingleQuote } = require('./shell-escape');
 
 /**
  * WinRMClient
@@ -46,18 +47,25 @@ class WinRMClient {
 
     const { host, username, password } = this.config;
 
-    // Sanitize the command to prevent script injection issues.
-    const sanitizedCommand = command.replace(/'/g, "''");
+    // Wszystkie wartości pochodzące z zewnątrz są cytowane jako literały
+    // single-quoted w PowerShell (apostrof escapowany przez podwojenie),
+    // co zapobiega wstrzyknięciu skryptu/poleceń.
+    const qHost = psSingleQuote(host);
+    const qUser = psSingleQuote(username);
+    const qPass = psSingleQuote(password);
+    const qCommand = psSingleQuote(command);
 
     // PowerShell script to create credentials and invoke the remote command.
-    // The output is converted to JSON for easier parsing.
+    // Polecenie zdalne przekazujemy jako string i wykonujemy przez
+    // Invoke-Expression wewnątrz ScriptBlock, dzięki czemu nie jest
+    // interpolowane do kodu skryptu po stronie hosta.
     const psScript = `
-      $pwd = ConvertTo-SecureString '${password}' -AsPlainText -Force;
-      $cred = New-Object System.Management.Automation.PSCredential('${username}', $pwd);
+      $pwd = ConvertTo-SecureString ${qPass} -AsPlainText -Force;
+      $cred = New-Object System.Management.Automation.PSCredential(${qUser}, $pwd);
       $sessionOption = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck;
       $ErrorActionPreference = "Stop";
       try {
-        $result = Invoke-Command -ComputerName '${host}' -Credential $cred -Authentication Negotiate -SessionOption $sessionOption -ScriptBlock { ${sanitizedCommand} };
+        $result = Invoke-Command -ComputerName ${qHost} -Credential $cred -Authentication Negotiate -SessionOption $sessionOption -ScriptBlock { param($c) Invoke-Expression $c } -ArgumentList ${qCommand};
         $output = @{
           stdout = $result | Out-String;
           stderr = '';

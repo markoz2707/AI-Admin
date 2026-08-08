@@ -79,6 +79,16 @@ function getConnection() {
     }
   });
 
+  // Ustawienia poprawiające współbieżność i spójność:
+  // - WAL: lepsza obsługa równoległych odczytów/zapisów,
+  // - foreign_keys: egzekwowanie kluczy obcych (domyślnie wyłączone w SQLite),
+  // - busy_timeout: ograniczenie błędów "database is locked".
+  db.serialize(() => {
+    db.run('PRAGMA journal_mode = WAL;');
+    db.run('PRAGMA foreign_keys = ON;');
+    db.run('PRAGMA busy_timeout = 5000;');
+  });
+
   connection = {
     db,
     run(sql, params = []) {
