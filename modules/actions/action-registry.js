@@ -94,10 +94,16 @@ function serviceAction(action, params, os) {
     };
   }
   const q = shQuote(name);
+  // Start/restart: usługa potrzebuje chwili i musi pozostać stabilna (anty-flapping).
+  const verifyPolicy =
+    action === 'stop'
+      ? { attempts: 3, delayMs: 1000 }
+      : { attempts: 5, delayMs: 2000, stabilizeChecks: 1, stabilizeDelayMs: 3000 };
   return {
     category: 'service',
     command: `sudo systemctl ${action} ${q}`,
     verify: action === 'stop' ? `! systemctl is-active --quiet ${q}` : `systemctl is-active --quiet ${q}`,
+    verifyPolicy,
     compensation: action === 'start' ? `sudo systemctl stop ${q}` : action === 'stop' ? `sudo systemctl start ${q}` : null,
     reversibility: 'reversible', blastRadius: 'single_service', dataLossRisk: 'none', requiresSnapshot: false,
   };
@@ -168,6 +174,7 @@ function resolve(step, os) {
       os,
       command: built.command,
       verify: built.verify || undefined,
+      verifyPolicy: built.verifyPolicy || undefined,
       compensation: built.compensation || undefined,
       metadata: {
         category: built.category,

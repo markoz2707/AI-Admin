@@ -25,6 +25,13 @@ test('service.stop ma odwrotną kompensację (start) i odpowiedni verify', () =>
   assert.match(step.compensation, /systemctl start 'nginx'/);
 });
 
+test('service.start ma verifyPolicy z retry i kontrolą stabilności', () => {
+  const { step } = resolve({ id: 's1', type: 'service.start', params: { name: 'nginx' } }, 'linux');
+  assert.ok(step.verifyPolicy);
+  assert.ok(step.verifyPolicy.attempts >= 2);
+  assert.ok(step.verifyPolicy.stabilizeChecks >= 1);
+});
+
 test('mapuje starsze typy: installation -> package.install', () => {
   const { typed, step } = resolve({ id: 's1', type: 'installation', app: 'curl' }, 'linux');
   assert.strictEqual(typed, true);
