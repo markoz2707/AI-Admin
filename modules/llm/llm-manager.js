@@ -25,6 +25,7 @@ const { planFromTasks, computePlanHash } = require('./plan-schema');
 const actionRegistry = require('../actions/action-registry');
 const authorityEngine = require('../policy/authority-engine');
 const DeferredScheduler = require('../agent/deferred-scheduler');
+const { verifyWithPolicy } = require('../agent/verifier');
 const { ExecutionJournal } = require('../journal/execution-journal');
 const ServerManager = require('../management/server-manager');
 const Logger = require('../access/logger');
@@ -53,6 +54,9 @@ class LLMManager {
 
    // Polityka autorytetu (z ustawień) — domyślna decyzja auto/approval.
    this._authorityPolicy = authorityPolicy || {};
+
+   // Sleep dla retry/flapping w weryfikacji (wstrzykiwalny na potrzeby testów).
+   this._sleep = config.sleep || ((ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve()));
 
    // Konfiguracja routingu LLM (trzymana, by móc rebuildować pipeline).
    this._llmConfig = {
@@ -586,13 +590,14 @@ class LLMManager {
     // Weryfikacja po wykonaniu (postcondition): polecenie `verify` z kodem 0 = OK.
     const verifier = async (step) => {
       if (!step.verify) return { ok: true };
-      try {
-        const r = await this._execGuardedRaw(serverId, step.verify, os, options.appUserId);
-        const ok = (r && (r.code === 0 || r.code === undefined)) || false;
-        return { ok, detail: ok ? null : (r && (r.stderr || r.stdout)) || 'verify exit != 0' };
-      } catch (err) {
-        return { ok: false, detail: err.message };
-      }
+      // Retry/timeout/flapping wg polityki (per krok lub globalnie); domyślnie 1 próba.
+      const policy = step.verifyPolicy || options.verifyPolicy || {};
+      return verifyWithPolicy({
+        command: step.verify,
+        run: (cmd) => this._execGuardedRaw(serverId, cmd, os, options.appUserId),
+        sleep: this._sleep,
+        policy,
+      });
     };
 
     // Kompensacja (rollback) kroku w trybie saga.
