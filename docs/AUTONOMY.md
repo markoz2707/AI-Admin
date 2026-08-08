@@ -206,154 +206,47 @@ sam, poza zakresem → APPROVAL. Zamienia jednorazowe zadania w ciągłe utrzyma
   guardrail poleceń pozostaje ostatnią linią obrony.
 - **Każda decyzja audytowalna i odtwarzalna**, z zapisanym uzasadnieniem.
 
-## 14. Addendum: wnioski z niezależnej recenzji (Fable 5)
+## 14. Addendum: wnioski z niezależnej recenzji (Fable 5) i stan realizacji
 
-Recenzja architektoniczna ujawniła luki, których część już naprawiono, a część
-zmienia kolejność roadmapy.
+Recenzja architektoniczna ujawniła luki; poniżej to, co już ZREALIZOWANO w kodzie
+(deterministyczny rdzeń autonomii, w pełni testowalny) oraz co pozostaje.
 
-### Zrealizowane (poprawność wykonania przed nowymi funkcjami)
+### Zrealizowane
 
-- **Naprawiony TOCTOU zatwierdzania.** Plan jest pinowany deterministycznym
-  hashem (`plan-schema.computePlanHash`). Przepływ: `buildPlan` (podgląd + hash)
-  → `executePlan(planId, { planHash, approvals })`. Wykonanie odmawia, gdy plan
-  zmienił się od zatwierdzenia (`PLAN_CHANGED`). **Plan zatwierdzony == plan
-  wykonany.**
-- **Zgoda per-krok** zamiast blankietowej: `approvals` to zbiór id kroków;
-  tylko zatwierdzone kroki `high` się wykonują (IPC: zatwierdza wyłącznie admin).
-- **Skonsolidowane wykonanie w Orchestratorze** — usunięto dublującą ścieżkę
-  `_executeTasksInternal`/`_executeSingleTask`; status pochodzi z orchestratora
-  (naprawiony błąd `'executed'` przy samych błędach); usunięto footgun
-  `allowBlocked`.
-- **Rozstrzyganie kroków do konkretnych poleceń przy budowie planu**
-  (`_resolveStepCommand`) — podgląd, hash i wykonanie są identyczne (dotyczy też
-  instalacji pakietów i operacji na usługach, z escapowaniem/walidacją).
-- **Guard uzgodniony z polityką i domknięty dla Windows.** `reboot/shutdown` i
-  `Stop-Computer/Restart-Computer` → `high` (APPROVAL, nie FORBIDDEN). Dodano
-  wzorce PowerShell (`Format-Volume`, `Clear-Disk`, `Remove-Item -Recurse`,
-  `Disable-NetAdapter`, `Set-NetFirewallProfile -Enabled False`) oraz luki Unix
-  (`find -delete`, `shred`, `base64|sh`, `bash -c "$(curl…)"`).
-- **Blokada nieodtworzonego placeholdera anonimizacji** w poleceniu
-  (`[[TYP_n]]` → critical) — defense-in-depth przeciw wyciekowi tokenów do shella.
-- **Wydzielony control plane (`AppService`) niezależny od Electrona.** Konstrukcja
-  managerów/repozytoriów/LLM oraz cykl życia (start/stop, migracje, journal,
-  recovery) są w `modules/service/app-service.js`. Electron używa go jako rdzenia
-  (UI = klient), a `service/headless.js` uruchamia ten sam backend jako
-  zawsze-włączoną usługę (`npm run start:service`) z `/health` i czystym
-  zamknięciem. To pierwszy krok rozdziału UI ↔ usługa.
-- **Trwały journal wykonania (`modules/journal/execution-journal.js`).** Stany
-  kroków (pending/executing/done/error/skipped/needs_verification/verify_failed/
-  compensated), idempotencja (krok 'done' nie jest ponawiany przy wznowieniu),
-  wykrycie kroków przerwanych awarią (zostają 'executing') i **recovery bez
-  ślepego ponowienia** (przerwane → needs_verification). Wpięty w
-  `LLMManager.executePlan`; `AppService.start` wykonuje recovery.
-- **Uwierzytelniony transport poleceń (`AppService.dispatch` + headless
-  `POST /rpc`).** Wspólna ścieżka dla UI i usługi: rozwiązanie sesji + RBAC +
-  rejestr handlerów rdzeniowych (auth/serwery/llm/env), token w nagłówku
-  `x-session-token`. Bootstrap administratora przy pustej bazie kont.
-- **Weryfikacja po wykonaniu + saga/kompensacje (orchestrator).** Krok może mieć
-  `verify` (postcondition; kod ≠ 0 → `verify_failed`) i `compensation` (rollback).
-  Przy niepowodzeniu w trybie saga już wykonane kroki są wycofywane w odwrotnej
-  kolejności (status planu `rolled_back`). `verify`/`compensation` wchodzą do
-  hasha planu (są więc objęte zatwierdzeniem).
-- **Read-back przerwanych kroków po restarcie.** Journal trzyma `verify`/
-  `compensation` per krok. `AppService.start` po `recover()` woła
-  `LLMManager.verifyInterruptedSteps`: dla kroków `needs_verification` uruchamia
-  ich `verify` (read-only) i ustala 'done' bez ślepego ponawiania operacji;
-  nierozstrzygnięte zostają do ręcznej decyzji.
-- **Obrona przed zatrutą percepcją (`modules/llm/perception-guard.js`).** Dane ze
-  zdalnych, niezaufanych hostów są traktowane jako nieufne: `detectInjection`
-  wykrywa próby przejęcia instrukcji (PL/EN, role-markery, tokeny specjalne),
-  `sanitizeText`/`sanitizeValue` neutralizują (usuwają sekwencje sterujące i
-  frazy-instrukcje, ograniczają długość), a `wrapUntrusted` opakowuje dane w
-  prompt jako jawne DANE (nie polecenia). Wpięte w `task-generator` (host/nazwy
-  aplikacji) oraz `environment-collector` (flaguje `perceptionWarnings` do
-  eskalacji w pętli autonomicznej).
-- **Wykrywanie self-lockout (guardrail).** Polecenia mogące odciąć własną ścieżkę
-  zarządzania (zatrzymanie SSH/WinRM, wyłączenie głównego NIC, firewall blokujący
-  port zarządzania, usunięcie domyślnej trasy) są klasyfikowane jako `high`
-  (APPROVAL) z flagą `selfLockout` — nigdy autonomicznie. (MVP oparty na wzorcach;
-  pełny, tranzytywny model „ścieżki zarządzania" pozostaje rozwinięciem.)
-- **Aprobata pinuje hash prekondycji stanu.** `buildPlan` może uchwycić odcisk
-  stanu serwera (`preconditionHash`), a `executePlan` odrzuca wykonanie
-  (`PLAN_STATE_CHANGED`), gdy stan zmienił się od zatwierdzenia — aprobata wygasa
-  nie tylko po czasie, ale i po zmianie stanu. Provider odcisku jest wstrzykiwalny
-  (domyślnie lekki fingerprint OS/hostname; mechanizm domyślnie wyłączony).
-- **Typed actions (`modules/actions/action-registry.js`).** Deklaratywne akcje
-  (`package.install`/`package.remove`/`service.start|stop|restart`, cross-OS) z
-  metadanymi ryzyka (reversibility/blastRadius/dataLossRisk/requiresSnapshot) oraz
-  **domyślnym `verify` i `compensation`**. `buildPlan` wzbogaca kroki przez
-  rejestr (także mapując starsze typy `installation`/`service`), więc plany
-  usług/pakietów automatycznie mają postcondition i rollback (saga + read-back).
-  Opcja `typedOnly` wymusza wyłącznie typed actions (zakaz surowych poleceń) —
-  fundament trybu autonomicznego. Ryzyko liczone z metadanych akcji, nie ze
-  stringa.
-- **Odroczone wykonanie z prawem weta (`modules/agent/deferred-scheduler.js`).**
-  Pośredni poziom autonomii między NOTIFY a APPROVAL: agent zapowiada wykonanie
-  planu za czas T, a administrator może je w tym oknie zawetować; bez weta plan
-  wykonuje się sam (`executePlan`). API w `LLMManager`
-  (`scheduleDeferredExecution`/`vetoDeferredExecution`/`listDeferredExecutions`)
-  i w transporcie (`llm:scheduleDeferred`/`vetoDeferred`/`listDeferred`; weto
-  dostępne także dla readonly — zatrzymanie jest bezpieczne).
-- **Silnik autorytetu (`modules/policy/authority-engine.js`).** Deterministyczna
-  decyzja `AUTONOMOUS/NOTIFY/APPROVAL/FORBIDDEN` z guardraila + metadanych typed
-  actions + środowiska + polityki admina (`environmentBump`, `categoryMin`,
-  `minAuthority`, `autonomyEnabled`). `buildPlan` przypisuje autorytet per krok i
-  `maxAuthority` do planu. To realizuje wprost regułę „pytaj admina tylko o
-  destrukcyjne/niebezpieczne, resztę rób sam".
-- **Reklasyfikacja `sudo`.** Gdy jedynym powodem oceny `high` jest podniesienie
-  uprawnień w ramach typed action, autorytet liczony jest z metadanych (rutynowa,
-  odwracalna instalacja w dev → NOTIFY, nie APPROVAL) — koniec approval fatigue.
-  Realne sygnały (userdel, rm -r, self-lockout, zapis do /etc) nadal → APPROVAL.
-- **Spięcie autorytetu z wykonaniem (`LLMManager.executeAutonomously`).** Autorytet
-  jest źródłem auto-zgody: kroki AUTONOMOUS/NOTIFY wykonują się samodzielnie,
-  APPROVAL czekają na administratora, FORBIDDEN/critical są blokowane. W prod próg
-  rośnie (np. instalacja NOTIFY→APPROVAL). Plany z krokami oczekującymi na zgodę
-  nie są usuwane z magazynu (można je dokończyć po zatwierdzeniu). To realizuje
-  end-to-end regułę „rób sam, pytaj tylko o destrukcyjne/niebezpieczne".
-  Transport: `llm:executeAutonomously`.
-- **Ciągła pętla agenta (`modules/agent/agent-loop.js`).** Cykliczny silnik z
-  twardymi barierami: brak nakładania cykli, **circuit breaker** (po serii błędów
-  pętla sama się zatrzymuje), **kill-switch** (`stop()`) i interwał jako
-  rate-limit; zegar i tick są wstrzykiwalne. W `AppService` pętla jest WYŁĄCZONA
-  domyślnie (autonomia opt-in), a domyślny tick jest zachowawczy (percepcja +
-  ostrzeżenia, bez auto-wykonywania). Sterowanie: `agent:start` (admin),
-  `agent:stop` (admin/operator — kill-switch), `agent:status`.
-- **Deklaratywna polityka autorytetu z ustawień (`AppService.loadAuthorityPolicy`).**
-  Admin steruje progami auto/approval przez ustawienia (`authority.policy` JSON +
-  nadpisania: `authority.autonomyEnabled`, `authority.minAuthority`,
-  `authority.environmentBump`, `authority.categoryMin`). Polityka jest wczytywana
-  przy starcie, przekazywana do `LLMManager` i przeładowywana na żywo przy zmianie
-  ustawień (`authority.*`). `buildPlan` używa polityki domyślnej, z możliwością
-  nadpisania per wywołanie.
-- **Tick remediacji (`modules/agent/maintenance-tick.js`).** Jeden cykl pętli:
-  perceive → poison-guard → goal → plan → execute. **Twarda zasada:** serwery z
-  `perceptionWarnings` (zatruta percepcja) są pomijane. Autonomia opt-in
-  (`autoExecute`), a autorytet i tak gatuje destrukcyjne kroki. Wpięte w
-  `AppService` (kolektor + `buildPlan` + `executeAutonomously`); bez `goalProvider`
-  tick tylko percypuje.
-- **Wykrywanie dryfu względem stanu pożądanego (`modules/agent/drift-detector.js`).**
-  Porównuje migawkę z deklaratywnym desired-state (usługi mają działać, pakiety mają
-  być zainstalowane) i zwraca zadania remediacji jako typed actions.
-  `LLMManager.buildPlanFromTasks` buduje z nich plan **deterministycznie (bez LLM)**
-  z pełnymi gwarancjami (guardrail, autorytet, hash, journal). `createDesiredStateGoal`
-  wpina to jako `goalProvider` pętli (`AppService` opcja `desiredState`).
+- **TOCTOU zatwierdzania**: pin planu hashem (`computePlanHash`); `executePlan`
+  odmawia przy zmianie planu (`PLAN_CHANGED`). Zgoda per-krok.
+- **Konsolidacja wykonania w Orchestratorze** (usunięta dubl  ścieżka, poprawny status).
+- **Guardrail** uzgodniony z polityką + wzorce Windows/PowerShell + Unix; blokada
+  nieodtworzonego placeholdera anonimizacji.
+- **Wydzielony control plane** (`AppService`) i **usługa headless**
+  (`service/headless.js`, `/health`, uwierzytelniony `/rpc`, RBAC).
+- **Trwały journal wykonania** (idempotencja, recovery, read-back po awarii).
+- **Saga**: `verify` (postcondition) + `compensation` (rollback) w odwrotnej kolejności.
+- **Rozszerzony kontrakt `verify`** (`modules/agent/verifier.js`): retry z
+  opóźnieniem + kontrola stabilności (anty-flapping); typed actions dla usług mają
+  domyślne polityki; `executePlan` używa `verifyWithPolicy` (zegar wstrzykiwalny).
+- **Obrona przed zatrutą percepcją** (`perception-guard`) i **self-lockout** (guardrail).
+- **Pin prekondycji stanu** (`PLAN_STATE_CHANGED`).
+- **Typed actions** (`action-registry`) z metadanymi ryzyka + domyślnym verify/compensation.
+- **Silnik autorytetu** (`authority-engine`) + reklasyfikacja `sudo`;
+  **`executeAutonomously`** (rób sam AUTONOMOUS/NOTIFY, pytaj o APPROVAL).
+- **Odroczone z prawem weta** (`deferred-scheduler`).
+- **Ciągła pętla agenta** (`agent-loop`) z circuit breakerem i kill-switchem.
+- **Deklaratywna polityka autorytetu z ustawień** (`AppService.loadAuthorityPolicy`).
+- **Tick remediacji** (`maintenance-tick`) z poison-guard oraz **wykrywanie dryfu**
+  desired-state (`drift-detector`) + `buildPlanFromTasks` (plan bez LLM).
 
-### Do zrobienia (zrewidowana kolejność — poprawność wykonania > authority engine)
+### Do zrobienia
 
-1. **Pełna migracja UI na `AppService.dispatch`** i uczynienie journala jedynym
-   źródłem prawdy o stanie (dziś magazyn planów jest in-memory; transport pokrywa
-   rdzeniowe kanały, Electron wciąż ma własne handlery dla pozostałych).
-2. **Persystencja/edycja desired-state i polityki** (UI) oraz LLM-owe wnioskowanie
-   celu ponad deterministyczny drift (dziś desired-state porównuje usługi/pakiety;
-   silnik i wpięcie gotowe). Opcjonalnie NOTIFY przez deferred-with-veto w pętli.
-3. **UI/edycja polityki autorytetu** — backend (ładowanie z ustawień + reload na
-   żywo) gotowy; brakuje ekranu edycji progów per środowisko/kategoria oraz okien
-   czasowych.
-4. **Rozszerzyć kontrakt `verify`** o timeouty, wykrywanie flappingu i
-   postconditions wielohostowe; powiązać `target` z inwentarzem migawki (UUID/serial).
-5. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny MVP.
-6. **Pełna migracja UI na `AppService.dispatch`** (wymaga uruchomienia Electrona
-   do weryfikacji) oraz journal jako jedyne źródło prawdy o stanie planów.
+1. **Pełna migracja UI na `AppService.dispatch`** (wymaga uruchomienia Electrona do
+   weryfikacji) i journal jako jedyne źródło prawdy o stanie planów.
+2. **UI/edycja polityki autorytetu i desired-state** oraz LLM-owe wnioskowanie celu
+   ponad deterministyczny drift.
+3. **Postconditions wielohostowe** dla `verify` i powiązanie `target` z inwentarzem
+   migawki (UUID/serial).
+4. **Pełny, tranzytywny model self-lockout** (jumphost/DNS/trasy) ponad obecny MVP.
+5. **Moduły zdolności storage/network + providerzy hypervisor/cloud** dla realnego
+   „dołóż dysk/NIC” przez natywne API.
 
 ### Decyzje technologiczne (zrewidowane)
 
