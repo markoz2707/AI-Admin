@@ -152,6 +152,26 @@ test('prekondycja: zmiana stanu serwera unieważnia aprobatę (PLAN_STATE_CHANGE
   );
 });
 
+test('verifyPolicy: retry verify aż przejdzie (bez ślepego ponawiania operacji)', async () => {
+  const { m, executed } = setup();
+  m._sleep = async () => {}; // brak realnego czekania w teście
+  let verifyCalls = 0;
+  m.serverManager.executeCommand = async (id, cmd) => {
+    executed.push(cmd);
+    if (cmd === 'check') { verifyCalls++; return { code: verifyCalls < 3 ? 1 : 0 }; } // OK dopiero za 3. razem
+    return { code: 0, stdout: 'ok' };
+  };
+  const steps = [{ id: 's1', type: 'command', command: 'do-it', os: 'linux', verify: 'check', verifyPolicy: { attempts: 5, delayMs: 1 } }];
+  const planHash = computePlanHash(steps);
+  m._planStore.set('p1', { planId: 'p1', serverId: 1, os: 'linux', prompt: 'p', summary: 's', steps, planHash, createdAt: new Date().toISOString() });
+  const r = await m.executePlan(1, 'p1', { planHash });
+  assert.strictEqual(r.status, 'executed');
+  assert.strictEqual(r.results[0].status, 'success');
+  // operacja 'do-it' wykonana raz; verify 'check' ponawiany do sukcesu
+  assert.strictEqual(executed.filter((c) => c === 'do-it').length, 1);
+  assert.strictEqual(verifyCalls, 3);
+});
+
 test('dryRun nie wykonuje ani nie żurnaluje', async () => {
   const { m, journal, executed } = setup();
   const steps = [{ id: 's1', type: 'command', command: 'echo a', os: 'linux' }];
